@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: #4F46E5;
+  --color-brand-secondary: #7C3AED;
+  --color-surface-bg: #F8FAFC;
+  --color-surface-card: #FFFFFF;
+  --color-status-success: #10B981;
+  --color-status-error: #EF4444;
+  --color-status-warning: #F59E0B;
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-[var(--color-surface-bg)] text-slate-900 antialiased;
+  }
+}
+
+/* Custom scrollbar for a polished look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}
+
+/* Hide number input spinners (arrows) globally */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Print Overrides for Professional PDF/Report Generation */
+@media print {
+  /* Hide structural panels, triggers, and control widgets */
+  #sidebar, 
+  #header, 
+  #fab-container, 
+  .no-print, 
+  .no-print *,
+  button, 
+  input, 
+  select, 
+  textarea,
+  footer {
+    display: none !important;
+  }
+
+  /* Reset layout constraints for paper output */
+  body, 
+  html, 
+  #root, 
+  main, 
+  .flex-1 {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Prevent text cutoff on breaks */
+  p, h1, h2, h3, h4, h5, h6, tr, td, th {
+    page-break-inside: avoid;
+  }
+
+  /* Beautiful layout styling for PDF reports */
+  .printable-report {
+    display: block !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 2.5cm !important; /* Standard margins */
+  }
+
+  .invoice-print-container {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
+
