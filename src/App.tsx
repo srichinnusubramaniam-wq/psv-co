@@ -36,11 +36,13 @@ export default function App() {
       case 'dashboard':
         return <Dashboard />;
       case 'inventory':
+      case 'purchase':
         return <Inventory />;
       case 'production':
+      case 'godown transfer':
         return (
           <ProductionUnits 
-            autoOpenForm={currentView === 'production' && openFormOnView === 'production'} 
+            autoOpenForm={(currentView === 'production' || currentView === 'godown transfer') && (openFormOnView === 'production' || openFormOnView === 'godown transfer')} 
             onFormOpened={() => setOpenFormOnView(null)} 
           />
         );
@@ -90,89 +92,6 @@ export default function App() {
         <footer className="py-6 px-8 text-center text-slate-400 text-[10px]">
           © 2026 INVEN Inventory Systems. All rights reserved.
         </footer>
-
-        {/* Floating Action Button (FAB) and menu */}
-        <div id="fab-container" className="fixed bottom-8 right-8 z-[100] flex flex-col items-end">
-          {/* Backdrop dimming layer to help guide focus to open action items */}
-          {isFabOpen && (
-            <div 
-              className="fixed inset-0 bg-slate-900/10 backdrop-blur-[1px] z-[99]" 
-              onClick={() => setIsFabOpen(false)} 
-            />
-          )}
-
-          {/* Expanded FAB Menu items */}
-          {isFabOpen && (
-            <div className="mb-4 flex flex-col gap-3.5 items-end relative z-[101] animate-in fade-in slide-in-from-bottom-5 duration-200">
-              {/* Record Sale Action */}
-              <div className="flex items-center gap-3 group">
-                <span className="text-[11px] font-extrabold text-slate-600 bg-white px-3.5 py-2 rounded-2xl border border-slate-100 shadow-md transition-all group-hover:scale-105 select-none whitespace-nowrap">
-                  Record Sale
-                </span>
-                <button
-                  onClick={() => {
-                    setCurrentView('invoice');
-                    setOpenFormOnView('invoice');
-                    setIsFabOpen(false);
-                  }}
-                  className="w-12 h-12 bg-white hover:bg-indigo-50 text-indigo-600 border border-slate-100 rounded-2xl flex items-center justify-center shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer"
-                  title="Record Sale"
-                >
-                  <FileText className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Record Expense Action */}
-              <div className="flex items-center gap-3 group">
-                <span className="text-[11px] font-extrabold text-slate-600 bg-white px-3.5 py-2 rounded-2xl border border-slate-100 shadow-md transition-all group-hover:scale-105 select-none whitespace-nowrap">
-                  Record Expense
-                </span>
-                <button
-                  onClick={() => {
-                    setCurrentView('record expense');
-                    setOpenFormOnView('record expense');
-                    setIsFabOpen(false);
-                  }}
-                  className="w-12 h-12 bg-white hover:bg-indigo-50 text-indigo-600 border border-slate-100 rounded-2xl flex items-center justify-center shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer"
-                  title="Record Expense"
-                >
-                  <Receipt className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Assign Production Action */}
-              <div className="flex items-center gap-3 group">
-                <span className="text-[11px] font-extrabold text-slate-600 bg-white px-3.5 py-2 rounded-2xl border border-slate-100 shadow-md transition-all group-hover:scale-105 select-none whitespace-nowrap">
-                  Assign Production
-                </span>
-                <button
-                  onClick={() => {
-                    setCurrentView('production');
-                    setOpenFormOnView('production');
-                    setIsFabOpen(false);
-                  }}
-                  className="w-12 h-12 bg-white hover:bg-indigo-50 text-indigo-600 border border-slate-100 rounded-2xl flex items-center justify-center shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-95 transition-all duration-200 cursor-pointer"
-                  title="Assign Production"
-                >
-                  <Factory className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Trigger Button */}
-          <button
-            id="fab-trigger"
-            onClick={() => setIsFabOpen(!isFabOpen)}
-            className="w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full flex items-center justify-center shadow-xl hover:shadow-2xl transition-all duration-300 relative z-[101] cursor-pointer hover:scale-105 active:scale-95"
-          >
-            {isFabOpen ? (
-              <X className="w-6 h-6 transition-transform duration-300 rotate-90" />
-            ) : (
-              <Plus className="w-6 h-6 transition-transform duration-300" />
-            )}
-          </button>
-        </div>
       </div>
     </div>
   );

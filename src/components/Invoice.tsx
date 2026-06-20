@@ -842,7 +842,7 @@ export default function Invoice({
               <div className="col-span-full py-20 text-center bg-white rounded-[40px] border-2 border-dashed border-slate-100">
                 <Package className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                 <p className="text-slate-400 font-bold">No finished goods found.</p>
-                <p className="text-xs text-slate-300 mt-1">Items move here when marked as 'Finished Goods' in Production.</p>
+                <p className="text-xs text-slate-300 mt-1">Items move here when marked as 'Finished Goods' in Godown Transfer.</p>
               </div>
             )}
           </div>

@@ -47,6 +47,19 @@ export interface InventoryItem {
   createdAt: string;
   paymentStatus?: 'Unpaid' | 'Partially Paid' | 'Paid';
   paidAmount?: number;
+  paymentType?: 'Cash' | 'Credit';
+  creditDays?: number;
+  dueDate?: string;
+}
+
+function addDays(dateStr: string, days: number | string | undefined): string {
+  if (!dateStr) return '';
+  const parsedDays = parseInt(String(days || '0'), 10);
+  if (isNaN(parsedDays) || parsedDays <= 0) return dateStr;
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  date.setDate(date.getDate() + parsedDays);
+  return date.toISOString().split('T')[0];
 }
 
 export default function Inventory() {
@@ -62,7 +75,8 @@ export default function Inventory() {
   const handleInventoryExcelExport = () => {
     const headers = [
       "Lot ID/No", 
-      "Fabric Type", 
+      "Payment Mode", 
+      "Due Date",
       "Quantity", 
       "Unit", 
       "Price Per Unit (INR)", 
@@ -83,7 +97,8 @@ export default function Inventory() {
 
       return [
         item.id,
-        item.fabricType || "N/A",
+        item.paymentType || "Cash",
+        item.dueDate || "N/A",
         item.quantity,
         item.unit,
         item.pricePerMeter,
@@ -117,7 +132,10 @@ export default function Inventory() {
     fabricType: 'Cotton',
     unit: 'Meters',
     entryDate: new Date().toISOString().split('T')[0],
-    paidAmount: 0
+    paidAmount: 0,
+    paymentType: 'Cash',
+    creditDays: 0,
+    dueDate: ''
   });
 
   const [activeTab, setActiveTab] = useState<'all' | 'pending_payments' | 'paid'>('all');
@@ -292,26 +310,58 @@ export default function Inventory() {
       status = 'Partially Paid';
     }
 
+    const entryDateVal = formData.entryDate || new Date().toISOString().split('T')[0];
+    const calculatedDueDate = addDays(entryDateVal, formData.creditDays || 0);
+
     if (editingId) {
       const updated = items.map(item => 
         item.id === editingId ? { 
           ...item, 
+          fabricType: item.fabricType || 'Cotton',
           ...formData as InventoryItem, 
           supplierName,
           paymentStatus: status,
-          paidAmount: initialPaid
+          paidAmount: initialPaid,
+          dueDate: calculatedDueDate
         } : item
       );
       saveToLocal(updated);
     } else {
+      const settingsStr = localStorage.getItem('inven_settings');
+      let prefix = 'PUR';
+      let currentNextId = 1;
+      let parsedSettings: any = {};
+
+      if (settingsStr) {
+        try {
+          parsedSettings = JSON.parse(settingsStr);
+          if (parsedSettings.purchasePrefix) prefix = parsedSettings.purchasePrefix;
+          if (parsedSettings.nextPurchaseId !== undefined && parsedSettings.nextPurchaseId !== '') currentNextId = Number(parsedSettings.nextPurchaseId);
+        } catch (e) {
+          console.error('Error parsing settings for purchase ID', e);
+        }
+      }
+
+      const formattedId = `${prefix}-${currentNextId.toString().padStart(3, '0')}`;
+
       const newItem: InventoryItem = {
+        fabricType: 'Cotton',
         ...formData as InventoryItem,
-        id: `INV-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`,
+        id: formattedId,
         supplierName,
         createdAt: new Date().toISOString(),
         paymentStatus: status,
-        paidAmount: initialPaid
+        paidAmount: initialPaid,
+        dueDate: calculatedDueDate
       };
+
+      // Increment and update next purchase id in localstorage
+      const updatedSettings = {
+        ...parsedSettings,
+        nextPurchaseId: currentNextId + 1
+      };
+      localStorage.setItem('inven_settings', JSON.stringify(updatedSettings));
+      window.dispatchEvent(new Event('inven_localstorage_sync'));
 
       if (initialPaid > 0) {
         recordExpenseEntry(
@@ -337,7 +387,10 @@ export default function Inventory() {
       fabricType: 'Cotton', 
       unit: 'Meters',
       entryDate: new Date().toISOString().split('T')[0],
-      paidAmount: 0
+      paidAmount: 0,
+      paymentType: 'Cash',
+      creditDays: 0,
+      dueDate: ''
     });
   };
 
@@ -353,8 +406,10 @@ export default function Inventory() {
   };
 
   const filteredItems = items.filter(i => 
+    (i.paymentType || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (i.fabricType || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (i.supplierName || '').toLowerCase().includes(searchQuery.toLowerCase())
+    (i.supplierName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (i.id || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const displayedItems = useMemo(() => {
@@ -389,67 +444,10 @@ export default function Inventory() {
     <div className="space-y-6 animate-in fade-in duration-500">
 
 
-      {/* Analytics Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div className="lg:col-span-2 bg-white rounded-[32px] p-8 shadow-sm border border-slate-100 h-[320px]">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-indigo-500" />
-                Stock Distribution by Supplier
-              </h3>
-            </div>
-          </div>
-          <div className="w-full h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={supplierData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-                  interval={0}
-                />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }} />
-                <Tooltip 
-                  cursor={{ fill: '#f8faff' }}
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: '600' }}
-                />
-                <Bar dataKey="total" radius={[6, 6, 0, 0]} barSize={40}>
-                  {supplierData.map((_entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[32px] p-8 text-white shadow-xl shadow-indigo-200 flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute -right-4 -top-4 w-32 h-32 bg-white/10 rounded-full blur-3xl" />
-          <div className="relative z-10">
-            <h3 className="text-indigo-100 text-xs font-bold uppercase tracking-[0.2em] mb-4">Inventory Value</h3>
-            <p className="text-4xl font-black tracking-tight mb-1">
-              ₹{items.reduce((sum, item) => sum + (item.pricePerMeter * item.quantity), 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-indigo-200 text-xs font-medium">Total registered inventory value</p>
-          </div>
-          <div className="relative z-10 pt-4 flex gap-4 border-t border-white/10 mt-4">
-            <div>
-              <p className="text-xs font-bold text-indigo-100">{items.length}</p>
-              <p className="text-[10px] uppercase font-bold text-indigo-300">Total Items</p>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-indigo-100">{items.reduce((sum, i) => sum + i.quantity, 0).toLocaleString()}m/pcs</p>
-              <p className="text-[10px] uppercase font-bold text-indigo-300">Total Volume</p>
-            </div>
-          </div>
-        </div>
-      </div>
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Inventory Management</h2>
+          <h2 className="text-2xl font-bold text-slate-800">Purchase Management</h2>
           <p className="text-sm text-slate-500">Track fabric stock, costs, and lot details.</p>
         </div>
         
@@ -573,7 +571,7 @@ export default function Inventory() {
             <thead>
               <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
                 <th className="px-6 py-4">Item Details</th>
-                <th className="px-6 py-4">Fabric Type</th>
+                <th className="px-6 py-4">Payment Mode</th>
                 <th className="px-6 py-4">Costing & Total</th>
                 <th className="px-6 py-4">Stock</th>
                 <th className="px-6 py-4">Payment Status</th>
@@ -599,9 +597,7 @@ export default function Inventory() {
                         <div className={cn(
                           "w-10 h-10 rounded-xl flex items-center justify-center",
                           item.quantity <= threshold ? "bg-rose-100 text-rose-600" :
-                          item.fabricType === 'Cotton' ? "bg-amber-50 text-amber-600" :
-                          item.fabricType === 'Silk' ? "bg-purple-50 text-purple-600" :
-                          "bg-sky-50 text-sky-600"
+                          item.paymentType === 'Credit' ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
                         )}>
                           <Layers className="w-5 h-5" />
                         </div>
@@ -613,7 +609,22 @@ export default function Inventory() {
                       </div>
                     </td>
                     <td className="px-6 py-5">
-                      <p className="text-sm font-semibold text-slate-700">{item.fabricType}</p>
+                      <div className="flex flex-col gap-1">
+                        <span className={cn(
+                          "text-xs font-bold px-2 py-0.5 rounded-lg w-fit border uppercase tracking-wider",
+                          item.paymentType === 'Credit' 
+                            ? "bg-amber-50 text-amber-700 border-amber-100" 
+                            : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                        )}>
+                          {item.paymentType || 'Cash'}
+                        </span>
+                        {item.paymentType === 'Credit' && item.dueDate && (
+                          <span className="text-[10px] text-slate-500 font-semibold">
+                            Due: <span className="text-rose-600 font-bold">{item.dueDate}</span>
+                            {item.creditDays !== undefined && ` (${item.creditDays}d)`}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-5">
                       <p className="text-sm font-bold text-slate-800">₹{item.pricePerMeter}/{item.unit === 'Meters' ? 'm' : 'pc'}</p>
@@ -704,7 +715,7 @@ export default function Inventory() {
           <div className="bg-white w-full max-w-3xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Inventory' : 'Add Raw Materials'}</h3>
+                <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Purchase' : 'Add Raw Materials'}</h3>
                 <p className="text-sm text-slate-500">Specify details for fabric stock entry.</p>
               </div>
               <button 
@@ -734,30 +745,41 @@ export default function Inventory() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Fabric Type</label>
-                  <select 
-                    required
-                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                    value={formData.fabricType || 'Cotton'}
-                    onChange={(e) => setFormData({...formData, fabricType: e.target.value})}
-                  >
-                    <option>Cotton</option>
-                    <option>Silk</option>
-                    <option>Rayon</option>
-                    <option>Polyester</option>
-                    <option>Linen</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
-                  <input 
-                    required
-                    type="date" 
-                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                    value={formData.entryDate || ''}
-                    onChange={(e) => setFormData({...formData, entryDate: e.target.value})}
-                  />
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Mode</label>
+                  <div className="flex gap-4">
+                    <label className={cn(
+                      "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
+                      (formData.paymentType || 'Cash') === 'Cash' 
+                        ? "bg-slate-900 text-white border-slate-900" 
+                        : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent"
+                    )}>
+                      <input 
+                        type="radio" 
+                        name="paymentType" 
+                        value="Cash"
+                        checked={(formData.paymentType || 'Cash') === 'Cash'}
+                        onChange={() => setFormData({ ...formData, paymentType: 'Cash' })}
+                        className="sr-only"
+                      />
+                      <span className="text-sm font-bold">Cash</span>
+                    </label>
+                    <label className={cn(
+                      "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
+                      formData.paymentType === 'Credit' 
+                        ? "bg-indigo-600 text-white border-indigo-600" 
+                        : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent"
+                    )}>
+                      <input 
+                        type="radio" 
+                        name="paymentType" 
+                        value="Credit"
+                        checked={formData.paymentType === 'Credit'}
+                        onChange={() => setFormData({ ...formData, paymentType: 'Credit' })}
+                        className="sr-only"
+                      />
+                      <span className="text-sm font-bold">Credit</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -769,6 +791,7 @@ export default function Inventory() {
                     className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm border-2 border-indigo-100"
                     value={formData.quantity || ''}
                     onChange={(e) => setFormData({...formData, quantity: parseFloat(e.target.value)})}
+                    onWheel={(e) => e.currentTarget.blur()}
                   />
                 </div>
 
@@ -786,6 +809,38 @@ export default function Inventory() {
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
+                  <input 
+                    required
+                    type="date" 
+                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                    value={formData.entryDate || ''}
+                    onChange={(e) => setFormData({...formData, entryDate: e.target.value})}
+                  />
+                </div>
+
+                <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Credit Days</label>
+                  <input 
+                    required
+                    type="number" 
+                    placeholder="e.g. 30"
+                    min="0"
+                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
+                    value={formData.creditDays || ''}
+                    onChange={(e) => setFormData({...formData, creditDays: parseInt(e.target.value) || 0})}
+                    onWheel={(e) => e.currentTarget.blur()}
+                  />
+                </div>
+
+                <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                  <label className="text-[11px] font-bold text-rose-500 uppercase tracking-widest px-1">Calculated Due Date</label>
+                  <div className="w-full bg-rose-50 border border-rose-100 rounded-2xl py-4 px-6 text-sm font-black text-rose-700 shadow-sm flex items-center gap-2">
+                    {addDays(formData.entryDate || new Date().toISOString().split('T')[0], formData.creditDays)}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Price / {formData.unit === 'Meters' ? 'Meter' : 'Piece'} (₹)</label>
                   <input 
                     required
@@ -794,6 +849,7 @@ export default function Inventory() {
                     className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
                     value={formData.pricePerMeter || ''}
                     onChange={(e) => setFormData({...formData, pricePerMeter: parseFloat(e.target.value)})}
+                    onWheel={(e) => e.currentTarget.blur()}
                   />
                 </div>
 
@@ -808,6 +864,7 @@ export default function Inventory() {
                     className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-emerald-700 shadow-sm"
                     value={formData.paidAmount || ''}
                     onChange={(e) => setFormData({...formData, paidAmount: parseFloat(e.target.value) || 0})}
+                    onWheel={(e) => e.currentTarget.blur()}
                   />
                   <p className="text-[10px] text-emerald-600/80 font-semibold px-1">
                     Logs an automatic Expense entry if greater than ₹0.
@@ -934,6 +991,7 @@ export default function Inventory() {
                       className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
                       value={paymentDetails.amountToPay || ''}
                       onChange={(e) => setPaymentDetails({ ...paymentDetails, amountToPay: parseFloat(e.target.value) || 0 })}
+                      onWheel={(e) => e.currentTarget.blur()}
                     />
                   </div>
                 )}
@@ -1028,7 +1086,7 @@ export default function Inventory() {
             <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm">
               <Trash2 className="w-6 h-6" />
             </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Delete Inventory Item?</h3>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Delete Purchase Item?</h3>
             <p className="text-sm text-slate-500 mb-8">
               Are you sure you want to delete item <span className="font-extrabold text-slate-700">"{deleteId}"</span>? This action cannot be undone and will permanently remove this stock record.
             </p>
@@ -1165,7 +1223,7 @@ export default function Inventory() {
                       <p className="text-[9px] text-slate-400 font-mono mt-1">Documented: {new Date().toLocaleString()}</p>
                     </div>
                     <div className="text-right text-[10px] font-medium text-slate-500">
-                      <p className="font-extrabold text-slate-800">Report No: #RPT-INV-{Math.floor(Date.now() / 1000)}</p>
+                      <p className="font-extrabold text-slate-800">Report No: #RPT-PUR-{Math.floor(Date.now() / 1000)}</p>
                       <p>Agent ID: jyadevi14@gmail.com</p>
                       <p>Filter Status: Active Stock Lots</p>
                     </div>

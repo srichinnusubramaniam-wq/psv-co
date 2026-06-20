@@ -587,7 +587,7 @@ export default function Customers() {
                   <div className="py-20 text-center bg-white rounded-[40px] border-2 border-dashed border-slate-100 flex flex-col items-center">
                     <History className="w-12 h-12 text-slate-200 mb-4" />
                     <p className="text-slate-400 font-bold">No delivery records found for this shop.</p>
-                    <p className="text-xs text-slate-300 mt-1">Items move here after being marked as 'Finished Goods' in Production.</p>
+                    <p className="text-xs text-slate-300 mt-1">Items move here after being marked as 'Finished Goods' in Godown Transfer.</p>
                   </div>
                 )}
               </div>

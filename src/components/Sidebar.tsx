@@ -16,8 +16,8 @@ import { cn } from '@/src/lib/utils';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', active: true },
-  { icon: Package, label: 'Inventory' },
-  { icon: Factory, label: 'Production' },
+  { icon: Package, label: 'Purchase' },
+  { icon: Factory, label: 'Godown Transfer' },
   { icon: Tag, label: 'Master' },
   { icon: FileText, label: 'Invoice' },
   { icon: Receipt, label: 'Record Expense' },

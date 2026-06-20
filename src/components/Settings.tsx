@@ -8,6 +8,9 @@ export default function Settings() {
   const [nextModelId, setNextModelId] = useState(1);
   const [prodPrefix, setProdPrefix] = useState('PRD');
   const [nextProdId, setNextProdId] = useState(1);
+  const [purchasePrefix, setPurchasePrefix] = useState('PUR');
+
+  const [nextPurchaseId, setNextPurchaseId] = useState(1);
   const [invoicePrefix, setInvoicePrefix] = useState('GT');
   const [invoiceYear, setInvoiceYear] = useState('25-26');
   const [nextInvoiceId, setNextInvoiceId] = useState(1);
@@ -27,6 +30,9 @@ export default function Settings() {
       setNextModelId(parsed.nextModelId || 1);
       setProdPrefix(parsed.prodPrefix || 'PRD');
       setNextProdId(parsed.nextProdId || 1);
+      setPurchasePrefix(parsed.purchasePrefix || 'PUR');
+      
+      setNextPurchaseId(parsed.nextPurchaseId !== undefined && parsed.nextPurchaseId !== '' ? Number(parsed.nextPurchaseId) : 1);
       setInvoicePrefix(parsed.invoicePrefix || 'GT');
       setInvoiceYear(parsed.invoiceYear || '25-26');
       setNextInvoiceId(parsed.nextInvoiceId || 1);
@@ -45,6 +51,8 @@ export default function Settings() {
       nextModelId,
       prodPrefix,
       nextProdId,
+      purchasePrefix,
+      nextPurchaseId,
       invoicePrefix,
       invoiceYear,
       nextInvoiceId,
@@ -145,7 +153,7 @@ export default function Settings() {
             {/* Inventory & Production IDs */}
             <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
               <div className="flex items-center gap-3 pb-4 border-b border-slate-50">
-                <h3 className="font-bold text-slate-800">Production IDs</h3>
+                <h3 className="font-bold text-slate-800">Godown Transfer IDs</h3>
               </div>
 
               <div className="space-y-5">
@@ -193,7 +201,7 @@ export default function Settings() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Production Prefix</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Godown Transfer Prefix</p>
                     <input 
                       type="text" 
                       value={prodPrefix || ''}
@@ -211,6 +219,39 @@ export default function Settings() {
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Financial & Invoice Sections */}
+            <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-slate-50">
+                <h3 className="font-bold text-slate-800">Purchase (PUR) IDs</h3>
+              </div>
+
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Purchase Prefix</p>
+                    <input 
+                      type="text" 
+                      value={purchasePrefix || ''}
+                      onChange={(e) => setPurchasePrefix(e.target.value.toUpperCase())}
+                      className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Starting ID</p>
+                    <input 
+                      type="number" 
+                      value={nextPurchaseId || ''}
+                      onChange={(e) => setNextPurchaseId(parseInt(e.target.value) || 1)}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold"
+                    />
+                  </div>
+                </div>
+
+
               </div>
             </div>
 
@@ -293,6 +334,7 @@ export default function Settings() {
                 { label: 'Supplier ID', val: `${supplierPrefix}-${nextSupplierId.toString().padStart(4, '0')}` },
                 { label: 'Model ID', val: `${modelPrefix}-${nextModelId.toString().padStart(3, '0')}` },
                 { label: 'Production ID', val: `${prodPrefix}-${nextProdId.toString().padStart(4, '0')}` },
+                { label: 'Purchase ID', val: `${purchasePrefix}-${nextPurchaseId.toString().padStart(3, '0')}` },
                 { label: 'Invoice No', val: `${invoicePrefix}/${invoiceYear}/${nextInvoiceId.toString().padStart(2, '0')}` }
               ].map((item, idx) => (
                 <div key={idx} className="bg-white/5 border border-white/10 p-5 rounded-[24px] backdrop-blur-sm">

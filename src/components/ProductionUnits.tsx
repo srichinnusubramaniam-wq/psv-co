@@ -29,6 +29,7 @@ interface ProductionAssignment {
   inventoryItemId: string;
   fabricType: string;
   unit: string;
+  toGodown?: string;
   size: 'XL' | 'XXL' | 'L' | 'M' | 'S';
   modelName: string;
   quantity: number;
@@ -64,7 +65,7 @@ export default function ProductionUnits({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Assigned' | 'Progressing' | 'Finished Goods' | 'Balance Pieces'>('All');
+  const [statusFilter, setStatusFilter] = useState<'Transfer' | 'Damage'>('Transfer');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string } | null>(null);
   
@@ -77,6 +78,7 @@ export default function ProductionUnits({
   const [formData, setFormData] = useState<any>({
     inventoryItemId: '',
     unit: '',
+    toGodown: '',
     size: 'XL',
     items: [{ modelName: '', quantity: 0, rate: 0, size: 'XL' }],
     status: 'Assigned',
@@ -97,6 +99,7 @@ export default function ProductionUnits({
       setEditingId(null);
       setFormData({ 
         unit: unitMaster[0]?.name || '', 
+        toGodown: '',
         inventoryItemId: '',
         size: 'XL', 
         items: [{ modelName: '', quantity: 0, rate: 0, size: 'XL' }],
@@ -203,6 +206,7 @@ export default function ProductionUnits({
   };
 
   const getMaxAvailableStock = () => {
+    if (!formData.inventoryItemId) return 999999;
     const selectedItem = inventory.find(i => i.id === formData.inventoryItemId);
     if (!selectedItem) return 0;
 
@@ -240,7 +244,7 @@ export default function ProductionUnits({
     const totalQuantityRequested = formData.items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
 
     // Stock Validation
-    if (totalQuantityRequested > maxStock) {
+    if (selectedItem && totalQuantityRequested > maxStock) {
       alert(`Insufficient stock! Requested: ${totalQuantityRequested}${selectedItem?.unit === 'Meters' ? 'm' : 'pcs'}, Available: ${maxStock}${selectedItem?.unit === 'Meters' ? 'm' : 'pcs'}`);
       return;
     }
@@ -368,6 +372,7 @@ export default function ProductionUnits({
           inventoryItemId: formData.inventoryItemId,
           customerId: formData.customerId,
           unit: formData.unit,
+          toGodown: formData.toGodown || '',
           size: item.size || formData.size || 'XL',
           modelName: item.modelName,
           quantity: item.quantity,
@@ -411,6 +416,7 @@ export default function ProductionUnits({
     setEditingId(null);
     setFormData({ 
       unit: unitMaster[0]?.name || '', 
+      toGodown: '',
       inventoryItemId: '',
       size: 'XL', 
       items: [{ modelName: '', quantity: 0, rate: 0, size: 'XL' }],
@@ -489,17 +495,8 @@ export default function ProductionUnits({
     const matchesSearch = a.modelName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.unit.toLowerCase().includes(searchQuery.toLowerCase());
     
-    let matchesStatus = false;
-    if (statusFilter === 'All') {
-      matchesStatus = true;
-    } else if (statusFilter === 'Balance Pieces') {
-      matchesStatus = a.status === 'Finished Goods' && (
-        (a.balancePieces !== undefined && a.balancePieces > 0) ||
-        (a.balanceMeters !== undefined && a.balanceMeters > 0)
-      );
-    } else {
-      matchesStatus = a.status === statusFilter;
-    }
+    const itemType = a.type || 'Transfer';
+    const matchesStatus = itemType === statusFilter;
     
     return matchesSearch && matchesStatus;
   });
@@ -508,13 +505,14 @@ export default function ProductionUnits({
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Production Assignments</h2>
-          <p className="text-sm text-slate-500">Assign warehouse stock to manufacturing units.</p>
+          <h2 className="text-2xl font-bold text-slate-800">Godown Transfer Assignments</h2>
+          <p className="text-sm text-slate-500">Transfer warehouse stock to production units.</p>
         </div>
         <button 
           onClick={() => {
             setEditingId(null);
             setFormData({ 
+              type: statusFilter,
               unit: unitMaster[0]?.name || '', 
               inventoryItemId: '',
               size: 'XL', 
@@ -535,13 +533,13 @@ export default function ProductionUnits({
           className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
         >
           <Plus className="w-4 h-4" />
-          Assign to Unit
+          {statusFilter === 'Damage' ? 'Add Damage' : 'Add Godown Transfer'}
         </button>
       </div>
 
 
       <div className="flex bg-slate-100 p-1 rounded-2xl w-fit overflow-x-auto max-w-full scrollbar-none">
-        {(['All', 'Assigned', 'Progressing', 'Finished Goods', 'Balance Pieces'] as const).map((status) => (
+        {(['Transfer', 'Damage'] as const).map((status) => (
           <button 
             key={status}
             onClick={() => { setStatusFilter(status); setSearchQuery(''); }}
@@ -556,66 +554,7 @@ export default function ProductionUnits({
       </div>
 
 
-      {/* Visual notification queue for Urgent Deadlines */}
-      {(() => {
-        const nowTime = new Date().getTime();
-        const urgent = assignments.filter((a) => {
-          if (a.status === 'Finished Goods') return false;
-          const expectedTime = new Date(a.expectedDate).getTime();
-          const diffMs = expectedTime - nowTime;
-          const diffHours = diffMs / (1000 * 60 * 60);
-          return diffHours <= 24;
-        });
 
-        if (urgent.length === 0) return null;
-
-        return (
-          <div className="bg-amber-50/50 border border-amber-200/60 p-6 rounded-[28px] space-y-4 animate-in fade-in slide-in-from-top-3 duration-300">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-100 text-amber-800 rounded-2xl animate-bounce">
-                  <AlertCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Active Deadline Notifications ({urgent.length})</h3>
-                  <p className="text-xs text-slate-500 font-medium">Production assignments with less than 24 hours remaining or past due.</p>
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {urgent.map((item) => {
-                const isOverdue = new Date(item.expectedDate).getTime() < new Date().getTime();
-                return (
-                  <div key={item.id} className="bg-white border border-amber-100/80 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] font-mono text-indigo-600 font-extrabold uppercase bg-indigo-50/50 px-2 py-0.5 rounded-md">
-                          {item.id}
-                        </span>
-                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                          isOverdue ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
-                        }`}>
-                          {isOverdue ? 'Overdue!' : 'Due Soon'}
-                        </span>
-                      </div>
-                      <h4 className="text-xs font-black text-slate-800 tracking-tight">{item.modelName}</h4>
-                      <p className="text-[11px] text-slate-400 mt-1 font-medium">
-                        Unit: <span className="font-extrabold text-slate-600">{item.unit}</span> · Qty: <span className="font-extrabold text-slate-600">{item.quantity}</span>
-                      </p>
-                    </div>
-                    <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px]">
-                      <span className="text-slate-400 font-medium">Expected Target:</span>
-                      <span className="font-mono font-extrabold text-slate-700">
-                        {new Date(item.expectedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
 
       <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
         <div className="relative flex-1">
@@ -630,236 +569,158 @@ export default function ProductionUnits({
         </div>
       </div>
 
-      <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
-                <th className="px-6 py-4">Assignment ID</th>
-                <th className="px-6 py-4">Unit & Model</th>
-                <th className="px-6 py-4">Size & Qty</th>
-                <th className="px-6 py-4">Rate & Cost</th>
-                <th className="px-6 py-4">Payment</th>
-                <th className="px-6 py-4">Expected Completion</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filtered.map((item) => (
-                <tr key={item.id} className="group hover:bg-slate-50/30 transition-colors">
-                  <td className="px-6 py-5">
-                    <p className="text-xs font-bold text-indigo-600">{item.id}</p>
-                    <p className="text-[10px] text-slate-400">{new Date(item.assignedAt).toLocaleDateString()}</p>
-                  </td>
-                  <td className="px-6 py-5">
-                    <p className="text-sm font-bold text-slate-800">{item.modelName}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                      <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                        {item.unit} {item.customerId && ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}`}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 tracking-tighter">SIZE {item.size}</span>
-                      <p className="text-sm font-bold text-slate-800">
-                        {statusFilter === 'Balance Pieces' ? (
-                          item.unit === 'Meters' ? (
-                            `${item.balanceMeters || 0} m`
-                          ) : (
-                            `${item.balancePieces || 0} pcs`
-                          )
-                        ) : item.status === 'Finished Goods' ? (
-                          item.unit === 'Meters' ? (
-                            `${item.finishedMeters !== undefined ? item.finishedMeters : (item.quantity - (item.balanceMeters || 0))} m`
-                          ) : (
-                            `${item.finishedPieces !== undefined ? item.finishedPieces : (item.quantity - (item.balancePieces || 0))} pcs`
-                          )
-                        ) : (
-                          `${item.quantity} ${item.unit === 'Meters' ? 'm' : 'pcs'}`
-                        )}
-                      </p>
-                    </div>
-                    {statusFilter !== 'Balance Pieces' && item.status === 'Finished Goods' && (
-                      <div className="mt-1 flex flex-col gap-0.5">
-                        {item.balancePieces !== undefined && item.balancePieces > 0 && (
-                          <p className="text-[10px] font-bold text-rose-500">BAL: {item.balancePieces} pcs</p>
-                        )}
-                        {item.balanceMeters !== undefined && item.balanceMeters > 0 && (
-                          <p className="text-[10px] font-bold text-rose-500">BAL: {item.balanceMeters}m</p>
-                        )}
+      {filtered.length === 0 ? (
+        <div className="py-20 text-center bg-white rounded-[40px] border-2 border-dashed border-slate-100 flex flex-col items-center">
+          <ClipboardList className="w-12 h-12 text-slate-200 mb-4 animate-pulse" />
+          <p className="text-slate-400 font-bold">No godown transfer assignments found.</p>
+          <p className="text-xs text-slate-300 mt-1">Fill details to start godown transfer tracking.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden animate-in fade-in duration-300">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
+                  <th className="px-6 py-4">Assignment ID</th>
+                  <th className="px-6 py-4">Godown Route & Model</th>
+                  <th className="px-6 py-4">Size & Qty</th>
+                  <th className="px-6 py-4">KGs</th>
+                  <th className="px-6 py-4">Transfer Date</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map((item) => (
+                  <tr key={item.id} className="group hover:bg-slate-50/30 transition-colors">
+                    <td className="px-6 py-5">
+                      <p className="text-xs font-bold text-indigo-600">{item.id}</p>
+                      <p className="text-[10px] text-slate-400">{new Date(item.assignedAt).toLocaleDateString()}</p>
+                    </td>
+                    <td className="px-6 py-5">
+                      <p className="text-sm font-bold text-slate-800">{item.modelName}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                        <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                          From: {item.unit}{item.toGodown ? ` → To: ${item.toGodown}` : ''}{item.customerId && ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}`}
+                        </p>
                       </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-5">
-                    <p className="text-sm font-bold text-slate-700">₹{item.rate}</p>
-                    <p className="text-[10px] font-bold text-slate-400">Total: ₹{(item.quantity * item.rate).toLocaleString()}</p>
-                  </td>
-                  <td className="px-6 py-5">
-                    {(() => {
-                      const totalCost = item.quantity * item.rate;
-                      const paid = item.paidAmount || 0;
-                      const due = Math.max(0, totalCost - paid);
-                      
-                      let badgeColor = "bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-100/50";
-                      let badgeText = "Unpaid";
-                      if (paid >= totalCost && totalCost > 0) {
-                        badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100/50";
-                        badgeText = "Fully Paid";
-                      } else if (paid > 0) {
-                        badgeColor = "bg-amber-50 text-amber-600 border-amber-100 hover:bg-amber-100/50";
-                        badgeText = "Partial";
-                      }
-
-                      return (
-                        <div className="flex flex-col gap-1 items-start">
-                          <button 
-                            onClick={() => {
-                              setPaymentItem(item);
-                              setPaymentAmount(due);
-                              setPaymentDate(item.paymentDate || new Date().toISOString().split('T')[0]);
-                              setIsPaymentOpen(true);
-                            }}
-                            className={cn(
-                              "text-[9px] px-2 py-0.5 rounded-full font-bold uppercase leading-none border transition-all hover:scale-105 active:scale-95 cursor-pointer",
-                              badgeColor
-                            )}
-                            title="Click to record payment"
-                          >
-                            {badgeText}
-                          </button>
-                          <p className="text-[10px] text-slate-500 font-medium leading-none mt-0.5">
-                            Paid: <span className="font-bold text-slate-700">₹{paid}</span>
-                          </p>
-                          {item.paymentDate && paid > 0 && (
-                            <p className="text-[9px] text-slate-400 font-bold leading-none mt-1 whitespace-nowrap">
-                              Date: {new Date(item.paymentDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </p>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 tracking-tighter">SIZE {item.size}</span>
+                        <p className="text-sm font-bold text-slate-800">
+                          {statusFilter === 'Balance Pieces' ? (
+                            item.unit === 'Meters' ? (
+                              `${item.balanceMeters || 0} m`
+                            ) : (
+                              `${item.balancePieces || 0} pcs`
+                            )
+                          ) : item.status === 'Finished Goods' ? (
+                            item.unit === 'Meters' ? (
+                              `${item.finishedMeters !== undefined ? item.finishedMeters : (item.quantity - (item.balanceMeters || 0))} m`
+                            ) : (
+                              `${item.finishedPieces !== undefined ? item.finishedPieces : (item.quantity - (item.balancePieces || 0))} pcs`
+                            )
+                          ) : (
+                            `${item.quantity} ${item.unit === 'Meters' ? 'm' : 'pcs'}`
                           )}
-                          {due > 0 && (
-                            <p className="text-[10px] text-rose-500 font-bold leading-none mt-1 animate-pulse">
-                              Bal: ₹{due}
-                            </p>
+                        </p>
+                      </div>
+                      {statusFilter !== 'Balance Pieces' && item.status === 'Finished Goods' && (
+                        <div className="mt-1 flex flex-col gap-0.5">
+                          {item.balancePieces !== undefined && item.balancePieces > 0 && (
+                            <p className="text-[10px] font-bold text-rose-500">BAL: {item.balancePieces} pcs</p>
+                          )}
+                          {item.balanceMeters !== undefined && item.balanceMeters > 0 && (
+                            <p className="text-[10px] font-bold text-rose-500">BAL: {item.balanceMeters}m</p>
                           )}
                         </div>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex items-center gap-2">
-                      <div>
-                        <p className="text-xs font-bold text-slate-700">{new Date(item.expectedDate).toLocaleDateString()}</p>
-                        <p className="text-[10px] text-slate-400">Due Date</p>
+                      )}
+                    </td>
+                    <td className="px-6 py-5">
+                      <p className="text-sm font-bold text-slate-700">{item.rate || 0} kgs</p>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-xs font-bold text-slate-700">{new Date(item.expectedDate).toLocaleDateString()}</p>
+                          <p className="text-[10px] text-slate-400">Transfer Date</p>
+                        </div>
+                        {(() => {
+                          if (item.status === 'Finished Goods') return null;
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          const expected = new Date(item.expectedDate);
+                          expected.setHours(0, 0, 0, 0);
+                          const diffTime = expected.getTime() - today.getTime();
+                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                          
+                          if (diffDays <= 2 && diffDays >= 0) {
+                            return (
+                              <div className="relative group/alert">
+                                <AlertCircle className="w-4 h-4 text-rose-500 animate-pulse" />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover/alert:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10 shadow-xl">
+                                  Due in {diffDays} day{diffDays !== 1 ? 's' : ''}!
+                                </div>
+                              </div>
+                            );
+                          } else if (diffDays < 0) {
+                            return (
+                              <div className="relative group/alert">
+                                <AlertCircle className="w-4 h-4 text-rose-600" />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-rose-600 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover/alert:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10 shadow-xl">
+                                  Overdue!
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
-                      {(() => {
-                        if (item.status === 'Finished Goods') return null;
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const expected = new Date(item.expectedDate);
-                        expected.setHours(0, 0, 0, 0);
-                        const diffTime = expected.getTime() - today.getTime();
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        
-                        if (diffDays <= 2 && diffDays >= 0) {
-                          return (
-                            <div className="relative group/alert">
-                              <AlertCircle className="w-4 h-4 text-rose-500 animate-pulse" />
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover/alert:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10 shadow-xl">
-                                Due in {diffDays} day{diffDays !== 1 ? 's' : ''}!
-                              </div>
-                            </div>
-                          );
-                        } else if (diffDays < 0) {
-                          return (
-                            <div className="relative group/alert">
-                              <AlertCircle className="w-4 h-4 text-rose-600" />
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-rose-600 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover/alert:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10 shadow-xl">
-                                Overdue!
-                              </div>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className={cn(
-                      "text-[9px] px-2 py-0.5 rounded-full font-bold uppercase leading-none border",
-                      statusFilter === 'Balance Pieces' ? "bg-rose-50 text-rose-600 border-rose-100" :
-                      item.status === 'Assigned' ? "bg-indigo-50 text-indigo-600 border-indigo-100" : 
-                      item.status === 'Progressing' ? "bg-amber-50 text-amber-600 border-amber-100" : 
-                      "bg-emerald-50 text-emerald-600 border-emerald-100"
-                    )}>
-                      {statusFilter === 'Balance Pieces' ? 'Unfinished Goods' : item.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button 
-                        onClick={() => {
-                          const totalCost = item.quantity * item.rate;
-                          const paid = item.paidAmount || 0;
-                          const due = Math.max(0, totalCost - paid);
-                          setPaymentItem(item);
-                          setPaymentAmount(due);
-                          setPaymentDate(item.paymentDate || new Date().toISOString().split('T')[0]);
-                          setIsPaymentOpen(true);
-                        }}
-                        className="p-2 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                        title="Record Payment"
-                      >
-                        <CreditCard className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setEditingId(item.id);
-                          const totalQty = item.quantity || 0;
-                          const derivedFinishedPieces = item.finishedPieces !== undefined 
-                            ? item.finishedPieces 
-                            : (item.allPiecesDelivered ? totalQty : Math.max(0, totalQty - (item.balancePieces || 0)));
-                          const derivedFinishedMeters = item.finishedMeters !== undefined 
-                            ? item.finishedMeters 
-                            : (item.allMetersDelivered ? totalQty : Math.max(0, totalQty - (item.balanceMeters || 0)));
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button 
+                          onClick={() => {
+                            setEditingId(item.id);
+                            const totalQty = item.quantity || 0;
+                            const derivedFinishedPieces = item.finishedPieces !== undefined 
+                              ? item.finishedPieces 
+                              : (item.allPiecesDelivered ? totalQty : Math.max(0, totalQty - (item.balancePieces || 0)));
+                            const derivedFinishedMeters = item.finishedMeters !== undefined 
+                              ? item.finishedMeters 
+                              : (item.allMetersDelivered ? totalQty : Math.max(0, totalQty - (item.balanceMeters || 0)));
 
-                          setFormData({
-                            ...item,
-                            paidAmount: item.paidAmount || 0,
-                            paymentDate: item.paymentDate || new Date().toISOString().split('T')[0],
-                            finishedPieces: derivedFinishedPieces,
-                            finishedMeters: derivedFinishedMeters,
-                            items: [{ modelName: item.modelName, quantity: totalQty, rate: item.rate, size: item.size || 'XL' }]
-                          });
-                          setIsFormOpen(true);
-                        }}
-                        className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => deleteItem(item.id, item.modelName)}
-                        className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center text-slate-400">
-                    <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm">No production assignments found.</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                            setFormData({
+                              ...item,
+                              type: item.type || 'Transfer',
+                              paidAmount: item.paidAmount || 0,
+                              paymentDate: item.paymentDate || new Date().toISOString().split('T')[0],
+                              finishedPieces: derivedFinishedPieces,
+                              finishedMeters: derivedFinishedMeters,
+                              items: [{ modelName: item.modelName, quantity: totalQty, rate: item.rate, size: item.size || 'XL' }]
+                            });
+                            setIsFormOpen(true);
+                          }}
+                          className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => deleteItem(item.id, item.modelName)}
+                          className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {isFormOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -867,7 +728,7 @@ export default function ProductionUnits({
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Assignment' : 'New Assignment'}</h3>
-                <p className="text-sm text-slate-500">{editingId ? 'Modify assignment details.' : 'Fill details to start production tracking.'}</p>
+                <p className="text-sm text-slate-500">{editingId ? 'Modify assignment details.' : 'Fill details to start godown transfer tracking.'}</p>
               </div>
               <button 
                 onClick={() => {
@@ -881,59 +742,18 @@ export default function ProductionUnits({
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
-              {/* Section 1: Fabric & Unit Setup */}
+              {/* Section 1: Godown Setup */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
                   <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
                     <Layers className="w-4 h-4" />
                   </div>
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Fabric & Unit Setup</h4>
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Godown Setup</h4>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2 col-span-full">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Source Inventory Item (Fabric)</label>
-                    <div className="relative">
-                      <Box className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-                      <select 
-                        required
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
-                        value={formData.inventoryItemId || ''}
-                        onChange={(e) => setFormData({...formData, inventoryItemId: e.target.value})}
-                      >
-                        <option value="">Select Fabric from Stock</option>
-                        {inventory.map(i => (
-                          <option key={i.id} value={i.id}>{i.fabricType} ({i.quantity}{i.unit === 'Meters' ? 'm' : 'pcs'} available)</option>
-                        ))}
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                        <ChevronRight className="w-4 h-4 rotate-90" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 col-span-full">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Target Shop / Finished Goods Record</label>
-                    <div className="relative">
-                      <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-                      <select 
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
-                        value={formData.customerId || ''}
-                        onChange={(e) => setFormData({...formData, customerId: e.target.value})}
-                      >
-                        <option value="">Select Shop/Target (Optional)</option>
-                        {customers.filter(c => c && c.id).map(c => (
-                          <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
-                        ))}
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                        <ChevronRight className="w-4 h-4 rotate-90" />
-                      </div>
-                    </div>
-                  </div>
-
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Production Unit</label>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">From Godown</label>
                     <div className="relative">
                       <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
                       <select 
@@ -954,9 +774,9 @@ export default function ProductionUnits({
                           setFormData({ ...formData, unit: newUnitName, items: updatedItems });
                         }}
                       >
-                        <option value="">Select Unit</option>
+                        <option value="">Select From Godown</option>
                         {unitMaster.filter(u => u && u.id).map(u => (
-                          <option key={u.id} value={u.name}>{u.name} ({u.location})</option>
+                          <option key={u.id} value={u.name}>{u.location ? `${u.name} (${u.location})` : u.name}</option>
                         ))}
                       </select>
                       <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
@@ -966,33 +786,50 @@ export default function ProductionUnits({
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Nighty Size</label>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">To Godown</label>
                     <div className="relative">
-                      <Maximize2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                      <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
                       <select 
                         required
                         className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
-                        value={formData.size || 'XL'}
-                        onChange={(e) => setFormData({...formData, size: e.target.value as any})}
+                        value={formData.toGodown || ''}
+                        onChange={(e) => setFormData({...formData, toGodown: e.target.value})}
                       >
-                        {['S', 'M', 'L', 'XL', 'XXL'].map(s => <option key={s}>{s}</option>)}
+                        <option value="">Select Target Godown</option>
+                        {unitMaster.filter(u => u && u.id).map(u => (
+                          <option key={u.id} value={u.name}>{u.location ? `${u.name} (${u.location})` : u.name}</option>
+                        ))}
                       </select>
                       <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                         <ChevronRight className="w-4 h-4 rotate-90" />
                       </div>
                     </div>
                   </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
+                      <input 
+                        required
+                        type="date"
+                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer"
+                        value={formData.assignedDate || ''}
+                        onChange={(e) => setFormData({...formData, assignedDate: e.target.value})}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Section 2: Models & Quantities */}
+              {/* Section 2: Products & Quantities */}
               <div className="space-y-6">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-50">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
                       <Settings2 className="w-4 h-4" />
                     </div>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Models to Assign</h4>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Product to Assign</h4>
                   </div>
                   {!editingId && (
                     <button 
@@ -1001,7 +838,7 @@ export default function ProductionUnits({
                       className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"
                     >
                       <Plus className="w-3 h-3" />
-                      Add Model
+                      Add Product
                     </button>
                   )}
                 </div>
@@ -1021,7 +858,7 @@ export default function ProductionUnits({
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-10 gap-x-4 gap-y-4">
                         {/* Model Select */}
-                        <div className="space-y-2 lg:col-span-4">
+                        <div className="space-y-2 lg:col-span-6">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Model Name</label>
                           <div className="relative">
                             <Monitor className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 z-10" />
@@ -1110,24 +947,7 @@ export default function ProductionUnits({
                             >
                               <option value="">Select a Model</option>
                               {productMaster.filter(p => p && p.name).map(p => (
-                                <option key={p.id} value={p.name}>{p.name} (₹{p.basePrice})</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Nighty Size dropdown per row */}
-                        <div className="space-y-2 lg:col-span-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nighty Size</label>
-                          <div className="relative">
-                            <select 
-                              required
-                              className="w-full bg-white border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm appearance-none cursor-pointer"
-                              value={item.size || 'XL'}
-                              onChange={(e) => updateItemRow(index, { size: e.target.value })}
-                            >
-                              {['S', 'M', 'L', 'XL', 'XXL'].map(s => (
-                                <option key={s} value={s}>{s}</option>
+                                <option key={p.id} value={p.name}>{p.name}</option>
                               ))}
                             </select>
                           </div>
@@ -1165,35 +985,18 @@ export default function ProductionUnits({
                           />
                         </div>
 
-                        {/* Rate */}
+                        {/* KGs */}
                         <div className="space-y-2 lg:col-span-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Rate (₹)</label>
-                          <div className="flex gap-2">
-                            <input 
-                              required
-                              type="number"
-                              className="flex-1 bg-white border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                              value={item.rate !== undefined && item.rate !== null && !isNaN(item.rate) ? item.rate : ''}
-                              onChange={(e) => updateItemRow(index, { rate: parseFloat(e.target.value) })}
-                            />
-                            <button 
-                              type="button"
-                              onClick={() => {
-                                const unit = unitMaster.find(u => u && u.name === formData.unit);
-                                const model = productMaster.find(p => p && p.name === item.modelName);
-                                if (unit && model) {
-                                  const specificRate = unit.modelRates?.find(mr => mr && mr.modelId === model.id);
-                                  updateItemRow(index, { rate: specificRate ? specificRate.rate : model.basePrice });
-                                } else if (model) {
-                                  updateItemRow(index, { rate: model.basePrice });
-                                }
-                              }}
-                              className="w-10 h-10 flex items-center justify-center text-slate-400 bg-white rounded-xl border border-slate-100 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100 transition-all shadow-sm"
-                              title="Reset to default rate"
-                            >
-                              <Settings2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">KGs</label>
+                          <input 
+                            required
+                            type="number"
+                            step="any"
+                            className="w-full bg-white border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
+                            placeholder="Enter KGs"
+                            value={item.rate !== undefined && item.rate !== null && !isNaN(item.rate) ? item.rate : ''}
+                            onChange={(e) => updateItemRow(index, { rate: parseFloat(e.target.value) || 0 })}
+                          />
                         </div>
                       </div>
                       
@@ -1206,290 +1009,154 @@ export default function ProductionUnits({
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {/* Section 3: Timing & Status */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-                    <Calendar className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Timing & Delivery</h4>
-                </div>
+                {/* Conditional render of Finished Goods Delivery Details */}
+                {formData.status === 'Finished Goods' && (() => {
+                  const selectedInvItem = inventory.find(i => i.id === formData.inventoryItemId);
+                  const isMeters = selectedInvItem ? selectedInvItem.unit === 'Meters' : false;
+                  const totalQty = formData.items.reduce((sum: number, it: any) => sum + (parseFloat(it.quantity) || 0), 0) || parseFloat(formData.quantity) || 0;
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Assigned Date</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
-                      <input 
-                        required
-                        type="date" 
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                        value={formData.assignedDate || ''}
-                        onChange={(e) => setFormData({...formData, assignedDate: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Expected Date</label>
-                    <div className="relative">
-                      <Truck className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
-                      <input 
-                        required
-                        type="date" 
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                        value={formData.expectedDate || ''}
-                        onChange={(e) => setFormData({...formData, expectedDate: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Initial Status</label>
-                    <div className="relative">
-                      <Settings2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
-                      <select 
-                        required
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-10 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm appearance-none cursor-pointer"
-                        value={formData.status || 'Assigned'}
-                        onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                      >
-                        <option value="Assigned">Assigned</option>
-                        <option value="Progressing">Progressing</option>
-                        <option value="Finished Goods">Finished Goods</option>
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                        <ChevronRight className="w-4 h-4 rotate-90" />
-                      </div>
-                    </div>
-                  </div>
+                  if (isMeters) {
+                    const computedFinishedMeters = formData.finishedMeters !== undefined ? parseFloat(formData.finishedMeters) : (formData.allMetersDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balanceMeters) || 0)));
+                    const curFinishedMeters = isNaN(computedFinishedMeters) ? 0 : computedFinishedMeters;
+                    const computedBalanceMeters = formData.balanceMeters !== undefined ? parseFloat(formData.balanceMeters) : (formData.allMetersDelivered ? 0 : totalQty);
+                    const curBalanceMeters = isNaN(computedBalanceMeters) ? 0 : computedBalanceMeters;
 
-                  {formData.status === 'Finished Goods' && (() => {
-                    const selectedInvItem = inventory.find(i => i.id === formData.inventoryItemId);
-                    const isMeters = selectedInvItem ? selectedInvItem.unit === 'Meters' : false;
-                    const totalQty = formData.items.reduce((sum: number, it: any) => sum + (parseFloat(it.quantity) || 0), 0) || parseFloat(formData.quantity) || 0;
-
-                    if (isMeters) {
-                      const computedFinishedMeters = formData.finishedMeters !== undefined ? parseFloat(formData.finishedMeters) : (formData.allMetersDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balanceMeters) || 0)));
-                      const curFinishedMeters = isNaN(computedFinishedMeters) ? 0 : computedFinishedMeters;
-                      const computedBalanceMeters = formData.balanceMeters !== undefined ? parseFloat(formData.balanceMeters) : (formData.allMetersDelivered ? 0 : totalQty);
-                      const curBalanceMeters = isNaN(computedBalanceMeters) ? 0 : computedBalanceMeters;
-
-                      return (
-                        <div className="col-span-full mt-2 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
-                          <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            Finished Goods Delivery Details
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-55 shadow-sm">
-                            <div className="space-y-2">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (m)</label>
-                              <input 
-                                type="number"
-                                required
-                                min="0"
-                                max={totalQty}
-                                className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                                placeholder={`Max: ${totalQty} m`}
-                                value={curFinishedMeters}
-                                onChange={(e) => {
-                                  let finishedVal = parseFloat(e.target.value);
-                                  if (isNaN(finishedVal)) finishedVal = 0;
-                                  finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
-                                  const bal = Math.max(0, totalQty - finishedVal);
-                                  setFormData({
-                                    ...formData,
-                                    finishedMeters: finishedVal,
-                                    balanceMeters: bal,
-                                    allMetersDelivered: bal === 0
-                                  });
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Meters (m)</label>
-                              <input 
-                                type="number"
-                                required
-                                min="0"
-                                max={totalQty}
-                                className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                                placeholder="Enter balance meters"
-                                value={curBalanceMeters}
-                                onChange={(e) => {
-                                  let balVal = parseFloat(e.target.value);
-                                  if (isNaN(balVal)) balVal = 0;
-                                  balVal = Math.min(totalQty, Math.max(0, balVal));
-                                  const finished = Math.max(0, totalQty - balVal);
-                                  setFormData({
-                                    ...formData,
-                                    balanceMeters: balVal,
-                                    finishedMeters: finished,
-                                    allMetersDelivered: balVal === 0
-                                  });
-                                }}
-                              />
-                            </div>
+                    return (
+                      <div className="col-span-full mt-4 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
+                        <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          Finished Goods Delivery Details
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (m)</label>
+                            <input 
+                              type="number"
+                              required
+                              min="0"
+                              max={totalQty}
+                              className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                              placeholder={`Max: ${totalQty} m`}
+                              value={curFinishedMeters}
+                              onChange={(e) => {
+                                let finishedVal = parseFloat(e.target.value);
+                                if (isNaN(finishedVal)) finishedVal = 0;
+                                finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
+                                const bal = Math.max(0, totalQty - finishedVal);
+                                setFormData({
+                                  ...formData,
+                                  finishedMeters: finishedVal,
+                                  balanceMeters: bal,
+                                  allMetersDelivered: bal === 0
+                                });
+                              }}
+                            />
                           </div>
-                          <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
-                            <span>Total Assigned: {totalQty} meters</span>
-                            <span>{curBalanceMeters > 0 ? `⚠️ Pending Balance: ${curBalanceMeters} meters` : '✅ All Meters Delivered'}</span>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Meters (m)</label>
+                            <input 
+                              type="number"
+                              required
+                              min="0"
+                              max={totalQty}
+                              className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                              placeholder="Enter balance meters"
+                              value={curBalanceMeters}
+                              onChange={(e) => {
+                                let balVal = parseFloat(e.target.value);
+                                if (isNaN(balVal)) balVal = 0;
+                                balVal = Math.min(totalQty, Math.max(0, balVal));
+                                const finished = Math.max(0, totalQty - balVal);
+                                setFormData({
+                                  ...formData,
+                                  balanceMeters: balVal,
+                                  finishedMeters: finished,
+                                  allMetersDelivered: balVal === 0
+                                });
+                              }}
+                            />
                           </div>
                         </div>
-                      );
-                    } else {
-                      const computedFinishedPieces = formData.finishedPieces !== undefined ? parseFloat(formData.finishedPieces) : (formData.allPiecesDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balancePieces) || 0)));
-                      const curFinishedPieces = isNaN(computedFinishedPieces) ? 0 : computedFinishedPieces;
-                      const computedBalancePieces = formData.balancePieces !== undefined ? parseFloat(formData.balancePieces) : (formData.allPiecesDelivered ? 0 : totalQty);
-                      const curBalancePieces = isNaN(computedBalancePieces) ? 0 : computedBalancePieces;
+                        <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
+                          <span>Total Assigned: {totalQty} meters</span>
+                          <span>{curBalanceMeters > 0 ? `⚠️ Pending Balance: ${curBalanceMeters} meters` : '✅ All Meters Delivered'}</span>
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    const computedFinishedPieces = formData.finishedPieces !== undefined ? parseFloat(formData.finishedPieces) : (formData.allPiecesDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balancePieces) || 0)));
+                    const curFinishedPieces = isNaN(computedFinishedPieces) ? 0 : computedFinishedPieces;
+                    const computedBalancePieces = formData.balancePieces !== undefined ? parseFloat(formData.balancePieces) : (formData.allPiecesDelivered ? 0 : totalQty);
+                    const curBalancePieces = isNaN(computedBalancePieces) ? 0 : computedBalancePieces;
 
-                      return (
-                        <div className="col-span-full mt-2 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
-                          <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            Finished Goods Delivery Details
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-55 shadow-sm">
-                            <div className="space-y-2">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (pcs)</label>
-                              <input 
-                                type="number"
-                                required
-                                min="0"
-                                max={totalQty}
-                                className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                                placeholder={`Max: ${totalQty} pcs`}
-                                value={curFinishedPieces}
-                                onChange={(e) => {
-                                  let finishedVal = parseFloat(e.target.value);
-                                  if (isNaN(finishedVal)) finishedVal = 0;
-                                  finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
-                                  const bal = Math.max(0, totalQty - finishedVal);
-                                  setFormData({
-                                    ...formData,
-                                    finishedPieces: finishedVal,
-                                    balancePieces: bal,
-                                    allPiecesDelivered: bal === 0
-                                  });
-                                }}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Pieces (pcs)</label>
-                              <input 
-                                type="number"
-                                required
-                                min="0"
-                                max={totalQty}
-                                className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                                placeholder="Enter balance pcs"
-                                value={curBalancePieces}
-                                onChange={(e) => {
-                                  let balVal = parseFloat(e.target.value);
-                                  if (isNaN(balVal)) balVal = 0;
-                                  balVal = Math.min(totalQty, Math.max(0, balVal));
-                                  const finished = Math.max(0, totalQty - balVal);
-                                  setFormData({
-                                    ...formData,
-                                    balancePieces: balVal,
-                                    finishedPieces: finished,
-                                    allPiecesDelivered: balVal === 0
-                                  });
-                                }}
-                              />
-                            </div>
+                    return (
+                      <div className="col-span-full mt-4 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
+                        <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          Finished Goods Delivery Details
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (pcs)</label>
+                            <input 
+                              type="number"
+                              required
+                              min="0"
+                              max={totalQty}
+                              className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                              placeholder={`Max: ${totalQty} pcs`}
+                              value={curFinishedPieces}
+                              onChange={(e) => {
+                                let finishedVal = parseFloat(e.target.value);
+                                if (isNaN(finishedVal)) finishedVal = 0;
+                                finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
+                                const bal = Math.max(0, totalQty - finishedVal);
+                                setFormData({
+                                  ...formData,
+                                  finishedPieces: finishedVal,
+                                  balancePieces: bal,
+                                  allPiecesDelivered: bal === 0
+                                });
+                              }}
+                            />
                           </div>
-                          <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
-                            <span>Total Assigned: {totalQty} pcs</span>
-                            <span>{curBalancePieces > 0 ? `⚠️ Pending Balance: ${curBalancePieces} pcs` : '✅ All Pieces Delivered'}</span>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Pieces (pcs)</label>
+                            <input 
+                              type="number"
+                              required
+                              min="0"
+                              max={totalQty}
+                              className="w-full bg-[#f8faff] border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                              placeholder="Enter balance pcs"
+                              value={curBalancePieces}
+                              onChange={(e) => {
+                                let balVal = parseFloat(e.target.value);
+                                if (isNaN(balVal)) balVal = 0;
+                                balVal = Math.min(totalQty, Math.max(0, balVal));
+                                const finished = Math.max(0, totalQty - balVal);
+                                setFormData({
+                                  ...formData,
+                                  balancePieces: balVal,
+                                  finishedPieces: finished,
+                                  allPiecesDelivered: balVal === 0
+                                });
+                              }}
+                            />
                           </div>
                         </div>
-                      );
-                    }
-                  })()}
-                </div>
-              </div>
-
-              {/* Section 4: Payment Setup */}
-              <div className="space-y-6 pt-4 border-t border-slate-50">
-                <div className="flex items-center gap-2 pb-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-                    <CreditCard className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest font-black">Payment Setup</h4>
-                </div>
-
-                {(() => {
-                  const totalQty = formData.items?.reduce((sum: number, it: any) => sum + (parseFloat(it.quantity) || 0), 0) || 0;
-                  const rate = formData.items?.[0]?.rate || 0;
-                  const totalCost = totalQty * rate;
-
-                  return (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-[#f8faff] p-6 rounded-[28px] border border-slate-100/80 shadow-sm">
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Total Assignment Cost (₹)</label>
-                        <div className="h-14 bg-white border border-slate-100 rounded-2xl px-5 flex items-center justify-between text-sm font-black text-slate-800 shadow-sm">
-                          <span>₹{(totalCost).toLocaleString()}</span>
-                          <span className="text-[10px] font-bold text-slate-400">({totalQty} x ₹{rate})</span>
+                        <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
+                          <span>Total Assigned: {totalQty} pcs</span>
+                          <span>{curBalancePieces > 0 ? `⚠️ Pending Balance: ${curBalancePieces} pcs` : '✅ All Pieces Delivered'}</span>
                         </div>
                       </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Amount Paid (₹)</label>
-                        <div className="flex gap-2">
-                          <input 
-                            type="number"
-                            min="0"
-                            max={totalCost}
-                            className="w-full bg-white border border-slate-100 rounded-2xl h-14 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm font-mono"
-                            placeholder="Paid amount"
-                            value={formData.paidAmount !== undefined ? formData.paidAmount : ''}
-                            onChange={(e) => {
-                              let val = parseFloat(e.target.value);
-                              if (isNaN(val)) val = 0;
-                              val = Math.min(totalCost, Math.max(0, val));
-                              setFormData({ ...formData, paidAmount: val });
-                            }}
-                          />
-                          <button 
-                            type="button"
-                            onClick={() => setFormData({ ...formData, paidAmount: totalCost })}
-                            className="px-4 text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 rounded-xl h-14 border border-emerald-100 hover:border-emerald-200 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer"
-                          >
-                            Paid Full
-                          </button>
-                        </div>
-                        {formData.paidAmount > 0 && formData.paidAmount < totalCost && (
-                          <p className="text-[10px] text-amber-600 font-bold px-1">
-                            ⚠️ Remaining Balance: ₹{(totalCost - formData.paidAmount).toLocaleString()}
-                          </p>
-                        )}
-                        {totalCost > 0 && formData.paidAmount >= totalCost && (
-                          <p className="text-[10px] text-emerald-600 font-bold px-1">
-                            ✅ Fully Paid!
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Date</label>
-                        <input 
-                          type="date"
-                          disabled={!(formData.paidAmount > 0)}
-                          className="h-14 w-full bg-white border border-slate-100 rounded-2xl px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm disabled:opacity-50 disabled:bg-slate-50/50"
-                          value={formData.paymentDate || ''}
-                          onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
-                        />
-                        {!(formData.paidAmount > 0) && (
-                          <p className="text-[10px] text-slate-400 font-medium px-1">
-                            Enter an amount paid to set date.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  );
+                    );
+                  }
                 })()}
               </div>
+
+
 
               <div className="pt-8 flex gap-4">
                 <button 
@@ -1621,6 +1288,7 @@ export default function ProductionUnits({
                             val = Math.min(due, Math.max(0, val));
                             setPaymentAmount(val);
                           }}
+                          onWheel={(e) => e.currentTarget.blur()}
                         />
                         <button 
                           type="button"

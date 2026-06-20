@@ -1553,7 +1553,7 @@ export default function ProductMaster() {
                       <input 
                         required
                         type="text" 
-                        placeholder="e.g. JAYANTHITRANSPORT"
+                        placeholder="e.g. JOTHI ANDAVAR"
                         className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm uppercase"
                         value={transportFormData.name || ''}
                         onChange={(e) => setTransportFormData({...transportFormData, name: e.target.value.toUpperCase()})}
