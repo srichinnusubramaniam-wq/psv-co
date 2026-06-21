@@ -512,7 +512,7 @@ export default function ProductionUnits({
           onClick={() => {
             setEditingId(null);
             setFormData({ 
-              type: statusFilter,
+              type: 'Transfer',
               unit: unitMaster[0]?.name || '', 
               inventoryItemId: '',
               size: 'XL', 
@@ -533,7 +533,7 @@ export default function ProductionUnits({
           className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
         >
           <Plus className="w-4 h-4" />
-          {statusFilter === 'Damage' ? 'Add Damage' : 'Add Godown Transfer'}
+          Transfer to Salem
         </button>
       </div>
 
@@ -584,7 +584,6 @@ export default function ProductionUnits({
                   <th className="px-6 py-4">Assignment ID</th>
                   <th className="px-6 py-4">Godown Route & Model</th>
                   <th className="px-6 py-4">Size & Qty</th>
-                  <th className="px-6 py-4">KGs</th>
                   <th className="px-6 py-4">Transfer Date</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
@@ -636,9 +635,6 @@ export default function ProductionUnits({
                           )}
                         </div>
                       )}
-                    </td>
-                    <td className="px-6 py-5">
-                      <p className="text-sm font-bold text-slate-700">{item.rate || 0} kgs</p>
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
@@ -727,8 +723,8 @@ export default function ProductionUnits({
           <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Assignment' : 'New Assignment'}</h3>
-                <p className="text-sm text-slate-500">{editingId ? 'Modify assignment details.' : 'Fill details to start godown transfer tracking.'}</p>
+                <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Transfer' : 'New Transfer'}</h3>
+                <p className="text-sm text-slate-500">{editingId ? 'Modify transfer details.' : 'Fill details to start godown transfer tracking.'}</p>
               </div>
               <button 
                 onClick={() => {
@@ -829,7 +825,7 @@ export default function ProductionUnits({
                     <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
                       <Settings2 className="w-4 h-4" />
                     </div>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Product to Assign</h4>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Product to Transfer</h4>
                   </div>
                   {!editingId && (
                     <button 
@@ -858,7 +854,7 @@ export default function ProductionUnits({
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-10 gap-x-4 gap-y-4">
                         {/* Model Select */}
-                        <div className="space-y-2 lg:col-span-6">
+                        <div className="space-y-2 lg:col-span-7">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Model Name</label>
                           <div className="relative">
                             <Monitor className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 z-10" />
@@ -954,7 +950,7 @@ export default function ProductionUnits({
                         </div>
 
                         {/* Quantity */}
-                        <div className="space-y-2 lg:col-span-2">
+                        <div className="space-y-2 lg:col-span-3">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-1">
                             Qty <span className="opacity-60">({inventory.find(i => i.id === formData.inventoryItemId)?.unit === 'Pieces' ? 'pcs' : 'm'})</span>
                           </label>
@@ -982,20 +978,6 @@ export default function ProductionUnits({
                               const capped = Math.min(val, limit);
                               updateItemRow(index, { quantity: capped });
                             }}
-                          />
-                        </div>
-
-                        {/* KGs */}
-                        <div className="space-y-2 lg:col-span-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">KGs</label>
-                          <input 
-                            required
-                            type="number"
-                            step="any"
-                            className="w-full bg-white border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                            placeholder="Enter KGs"
-                            value={item.rate !== undefined && item.rate !== null && !isNaN(item.rate) ? item.rate : ''}
-                            onChange={(e) => updateItemRow(index, { rate: parseFloat(e.target.value) || 0 })}
                           />
                         </div>
                       </div>
@@ -1173,7 +1155,7 @@ export default function ProductionUnits({
                   type="submit"
                   className="flex-2 px-6 py-4 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98]"
                 >
-                  {editingId ? 'Save Changes' : 'Confirm Assignment'}
+                  {editingId ? 'Save Changes' : 'Confirm Transfer'}
                 </button>
               </div>
             </form>
