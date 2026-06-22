@@ -20,8 +20,6 @@ const navItems = [
   { icon: Factory, label: 'Godown Transfer' },
   { icon: Tag, label: 'Master' },
   { icon: FileText, label: 'Invoice' },
-  { icon: Receipt, label: 'Record Expense' },
-  { icon: TrendingUp, label: 'Record Income' },
   { icon: BarChart3, label: 'Reports' },
   { icon: Settings, label: 'Settings' },
 ];

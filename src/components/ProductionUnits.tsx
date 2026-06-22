@@ -48,6 +48,8 @@ interface ProductionAssignment {
   paidAmount?: number;
   paymentStatus?: 'Unpaid' | 'Partial' | 'Paid';
   paymentDate?: string;
+  type?: 'Transfer' | 'Damage' | 'Finished Goods';
+  productGroupName?: string;
 }
 
 export default function ProductionUnits({ 
@@ -65,7 +67,7 @@ export default function ProductionUnits({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'Transfer' | 'Damage'>('Transfer');
+  const [statusFilter, setStatusFilter] = useState<'Transfer' | 'Damage' | 'Finished Goods'>('Transfer');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string } | null>(null);
   
@@ -249,7 +251,7 @@ export default function ProductionUnits({
       return;
     }
 
-    const fabricType = selectedItem ? selectedItem.fabricType : (formData.fabricType || 'Unknown');
+    const fabricType = selectedItem ? selectedItem.fabricType : (formData.type === 'Finished Goods' ? 'Finished Goods' : (formData.fabricType || 'Unknown'));
 
     if (editingId) {
       // Find original assignment
@@ -342,7 +344,8 @@ export default function ProductionUnits({
       }
     } else {
       const newAssignments: ProductionAssignment[] = formData.items.map((item: any) => {
-        const id = `${settings.prodPrefix || 'PRD'}-${currentNextId.toString().padStart(4, '0')}`;
+        const prefix = formData.type === 'Damage' ? 'DMG' : (settings.prodPrefix || 'PRD');
+        const id = `${prefix}-${currentNextId.toString().padStart(4, '0')}`;
         currentNextId++;
         const totalQty = item.quantity || 0;
         const status = formData.status || 'Assigned';
@@ -369,7 +372,8 @@ export default function ProductionUnits({
 
         return {
           id,
-          inventoryItemId: formData.inventoryItemId,
+          type: formData.type || 'Transfer',
+          inventoryItemId: formData.inventoryItemId || '',
           customerId: formData.customerId,
           unit: formData.unit,
           toGodown: formData.toGodown || '',
@@ -391,6 +395,7 @@ export default function ProductionUnits({
           paidAmount,
           paymentStatus,
           paymentDate: paidAmount > 0 ? (formData.paymentDate || new Date().toISOString().split('T')[0]) : undefined,
+          productGroupName: formData.productGroupName || '',
         };
       });
 
@@ -511,35 +516,74 @@ export default function ProductionUnits({
         <button 
           onClick={() => {
             setEditingId(null);
-            setFormData({ 
-              type: 'Transfer',
-              unit: unitMaster[0]?.name || '', 
-              inventoryItemId: '',
-              size: 'XL', 
-              items: [{ modelName: '', quantity: 0, rate: 0, size: 'XL' }],
-              status: 'Assigned',
-              allPiecesDelivered: false,
-              allMetersDelivered: false,
-              balancePieces: 0,
-              balanceMeters: 0,
-              finishedPieces: 0,
-              finishedMeters: 0,
-              paidAmount: 0,
-              assignedDate: new Date().toISOString().split('T')[0],
-              expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-            });
+            if (statusFilter === 'Finished Goods') {
+              setFormData({ 
+                type: 'Finished Goods',
+                unit: unitMaster[0]?.name || '', 
+                inventoryItemId: '',
+                size: 'XL', 
+                items: [{ modelName: '', quantity: 0, rate: 0, size: 'XL' }],
+                status: 'Finished Goods',
+                allPiecesDelivered: true,
+                allMetersDelivered: true,
+                balancePieces: 0,
+                balanceMeters: 0,
+                finishedPieces: 0,
+                finishedMeters: 0,
+                paidAmount: 0,
+                productGroupName: '',
+                assignedDate: new Date().toISOString().split('T')[0],
+                expectedDate: new Date().toISOString().split('T')[0]
+              });
+            } else if (statusFilter === 'Damage') {
+              setFormData({ 
+                type: 'Damage',
+                unit: unitMaster[0]?.name || '', 
+                inventoryItemId: '',
+                size: 'XL', 
+                items: [{ modelName: '', quantity: 0, rate: 0, size: 'XL' }],
+                status: 'Assigned',
+                allPiecesDelivered: false,
+                allMetersDelivered: false,
+                balancePieces: 0,
+                balanceMeters: 0,
+                finishedPieces: 0,
+                finishedMeters: 0,
+                paidAmount: 0,
+                assignedDate: new Date().toISOString().split('T')[0],
+                expectedDate: new Date().toISOString().split('T')[0]
+              });
+            } else {
+              setFormData({ 
+                type: 'Transfer',
+                unit: unitMaster[0]?.name || '', 
+                inventoryItemId: '',
+                size: 'XL', 
+                items: [{ modelName: '', quantity: 0, rate: 0, size: 'XL' }],
+                status: 'Assigned',
+                allPiecesDelivered: false,
+                allMetersDelivered: false,
+                balancePieces: 0,
+                balanceMeters: 0,
+                finishedPieces: 0,
+                finishedMeters: 0,
+                paidAmount: 0,
+                assignedDate: new Date().toISOString().split('T')[0],
+                expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+              });
+            }
             setIsFormOpen(true);
           }}
           className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
         >
           <Plus className="w-4 h-4" />
-          Transfer to Salem
+          {statusFilter === 'Finished Goods' ? 'Add Finished Goods' : (statusFilter === 'Damage' ? 'Add Damage' : 'Transfer to Salem')}
         </button>
       </div>
 
 
       <div className="flex bg-slate-100 p-1 rounded-2xl w-fit overflow-x-auto max-w-full scrollbar-none">
-        {(['Transfer', 'Damage'] as const).map((status) => (
+        {(['Transfer', 'Damage', 'Finished Goods'] as const).map((status) => (
           <button 
             key={status}
             onClick={() => { setStatusFilter(status); setSearchQuery(''); }}
@@ -581,10 +625,18 @@ export default function ProductionUnits({
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
-                  <th className="px-6 py-4">Assignment ID</th>
-                  <th className="px-6 py-4">Godown Route & Model</th>
-                  <th className="px-6 py-4">Size & Qty</th>
-                  <th className="px-6 py-4">Transfer Date</th>
+                  <th className="px-6 py-4">
+                    {statusFilter === 'Finished Goods' ? 'Finished Goods ID' : (statusFilter === 'Damage' ? 'Damage ID' : 'Assignment ID')}
+                  </th>
+                  <th className="px-6 py-4">
+                    {statusFilter === 'Finished Goods' ? 'Godown & Product Details' : (statusFilter === 'Damage' ? 'Godown & Product Description' : 'Godown Route & Model')}
+                  </th>
+                  <th className="px-6 py-4">
+                    {statusFilter === 'Finished Goods' ? 'Quantity' : (statusFilter === 'Damage' ? 'Damage Qty' : 'Quantity')}
+                  </th>
+                  <th className="px-6 py-4">
+                    {statusFilter === 'Finished Goods' ? 'Receipt Date' : (statusFilter === 'Damage' ? 'Damage Date' : 'Transfer Date')}
+                  </th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -593,41 +645,59 @@ export default function ProductionUnits({
                   <tr key={item.id} className="group hover:bg-slate-50/30 transition-colors">
                     <td className="px-6 py-5">
                       <p className="text-xs font-bold text-indigo-600">{item.id}</p>
-                      <p className="text-[10px] text-slate-400">{new Date(item.assignedAt).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-slate-400">{new Date(item.assignedAt || item.assignedDate).toLocaleDateString()}</p>
                     </td>
-                    <td className="px-6 py-5">
+                     <td className="px-6 py-5">
                       <p className="text-sm font-bold text-slate-800">{item.modelName}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                         <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                          From: {item.unit}{item.toGodown ? ` → To: ${item.toGodown}` : ''}{item.customerId && ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}`}
+                          {(() => {
+                            const cleanUnit = (item.unit || '').replace(/undefined/gi, '').trim();
+                            const cleanTo = (item.toGodown && item.toGodown !== 'undefined' && item.toGodown !== 'null') ? item.toGodown : '';
+                            const cleanCustomer = (item.customerId && item.customerId !== 'undefined' && item.customerId !== 'null') ? item.customerId : '';
+                            return statusFilter === 'Finished Goods' 
+                              ? `Godown: ${cleanUnit}` 
+                              : (statusFilter === 'Damage' 
+                                  ? `Godown: ${cleanUnit}` 
+                                  : `From: ${cleanUnit}${cleanTo ? ` → To: ${cleanTo}` : ''}${cleanCustomer && ` • ${customers.find(c => c && c.id === cleanCustomer)?.name || cleanCustomer}`}`
+                                );
+                          })()}
                         </p>
+                        {item.productGroupName && (
+                          <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded uppercase tracking-wider">
+                            Group: {item.productGroupName}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 tracking-tighter">SIZE {item.size}</span>
                         <p className="text-sm font-bold text-slate-800">
-                          {statusFilter === 'Balance Pieces' ? (
-                            item.unit === 'Meters' ? (
-                              `${item.balanceMeters || 0} m`
-                            ) : (
-                              `${item.balancePieces || 0} pcs`
-                            )
-                          ) : item.status === 'Finished Goods' ? (
-                            item.unit === 'Meters' ? (
-                              `${item.finishedMeters !== undefined ? item.finishedMeters : (item.quantity - (item.balanceMeters || 0))} m`
-                            ) : (
-                              `${item.finishedPieces !== undefined ? item.finishedPieces : (item.quantity - (item.balancePieces || 0))} pcs`
-                            )
+                          {statusFilter === 'Finished Goods' ? (
+                            `${item.quantity} pcs`
                           ) : (
-                            `${item.quantity} ${item.unit === 'Meters' ? 'm' : 'pcs'}`
+                            statusFilter === 'Balance Pieces' ? (
+                              item.unit === 'Meters' ? (
+                                `${item.balanceMeters || 0} m`
+                              ) : (
+                                `${item.balancePieces || 0} pcs`
+                              )
+                            ) : item.status === 'Finished Goods' ? (
+                              item.unit === 'Meters' ? (
+                                `${item.finishedMeters !== undefined ? item.finishedMeters : (item.quantity - (item.balanceMeters || 0))} m`
+                              ) : (
+                                `${item.finishedPieces !== undefined ? item.finishedPieces : (item.quantity - (item.balancePieces || 0))} pcs`
+                              )
+                            ) : (
+                              `${item.quantity} ${statusFilter === 'Damage' ? 'pcs' : (item.unit === 'Meters' ? 'm' : 'pcs')}`
+                            )
                           )}
                         </p>
                       </div>
-                      {statusFilter !== 'Balance Pieces' && item.status === 'Finished Goods' && (
+                      {statusFilter !== 'Balance Pieces' && statusFilter !== 'Damage' && statusFilter !== 'Finished Goods' && item.status === 'Finished Goods' && (
                         <div className="mt-1 flex flex-col gap-0.5">
-                          {item.balancePieces !== undefined && item.balancePieces > 0 && (
+                           {item.balancePieces !== undefined && item.balancePieces > 0 && (
                             <p className="text-[10px] font-bold text-rose-500">BAL: {item.balancePieces} pcs</p>
                           )}
                           {item.balanceMeters !== undefined && item.balanceMeters > 0 && (
@@ -639,10 +709,12 @@ export default function ProductionUnits({
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
                         <div>
-                          <p className="text-xs font-bold text-slate-700">{new Date(item.expectedDate).toLocaleDateString()}</p>
-                          <p className="text-[10px] text-slate-400">Transfer Date</p>
+                          <p className="text-xs font-bold text-slate-700">{new Date(item.expectedDate || item.assignedDate || item.assignedAt).toLocaleDateString()}</p>
+                          <p className="text-[10px] text-slate-400">
+                            {statusFilter === 'Finished Goods' ? 'Receipt Date' : (statusFilter === 'Damage' ? 'Damage Date' : 'Transfer Date')}
+                          </p>
                         </div>
-                        {(() => {
+                        {statusFilter !== 'Damage' && (() => {
                           if (item.status === 'Finished Goods') return null;
                           const today = new Date();
                           today.setHours(0, 0, 0, 0);
@@ -723,8 +795,18 @@ export default function ProductionUnits({
           <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Transfer' : 'New Transfer'}</h3>
-                <p className="text-sm text-slate-500">{editingId ? 'Modify transfer details.' : 'Fill details to start godown transfer tracking.'}</p>
+                <h3 className="text-xl font-bold text-slate-800">
+                  {editingId 
+                    ? (formData.type === 'Finished Goods' ? 'Edit Finished Goods Record' : (formData.type === 'Damage' ? 'Edit Damage Record' : 'Edit Transfer')) 
+                    : (formData.type === 'Finished Goods' ? 'Record Finished Goods' : (formData.type === 'Damage' ? 'Record New Damage' : 'New Transfer'))
+                  }
+                </h3>
+                <p className="text-sm text-slate-500">
+                  {editingId 
+                    ? (formData.type === 'Finished Goods' ? 'Modify finished goods details.' : (formData.type === 'Damage' ? 'Modify damage details.' : 'Modify transfer details.')) 
+                    : (formData.type === 'Finished Goods' ? 'Fill details to add finished goods to the selected godown.' : (formData.type === 'Damage' ? 'Fill details to register product damage at godown.' : 'Fill details to start godown transfer tracking.'))
+                  }
+                </p>
               </div>
               <button 
                 onClick={() => {
@@ -738,406 +820,672 @@ export default function ProductionUnits({
             </div>
 
             <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
-              {/* Section 1: Godown Setup */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-                    <Layers className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Godown Setup</h4>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">From Godown</label>
-                    <div className="relative">
-                      <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-                      <select 
-                        required
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
-                        value={formData.unit || ''}
-                        onChange={(e) => {
-                          const newUnitName = e.target.value;
-                          const unit = unitMaster.find(u => u && u.name === newUnitName);
-                          const updatedItems = formData.items.map((item: any) => {
-                            const model = productMaster.find(p => p && p.name === item.modelName);
-                            if (unit && model) {
-                              const specificRate = unit.modelRates?.find(mr => mr && mr.modelId === model.id);
-                              return { ...item, rate: specificRate ? specificRate.rate : model.basePrice };
-                            }
-                            return item;
-                          });
-                          setFormData({ ...formData, unit: newUnitName, items: updatedItems });
-                        }}
-                      >
-                        <option value="">Select From Godown</option>
-                        {unitMaster.filter(u => u && u.id).map(u => (
-                          <option key={u.id} value={u.name}>{u.location ? `${u.name} (${u.location})` : u.name}</option>
-                        ))}
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                        <ChevronRight className="w-4 h-4 rotate-90" />
-                      </div>
+              {formData.type === 'Finished Goods' ? (
+                /* FINISHED GOODS ENTRY FORM COMPONENTS */
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
+                      <Box className="w-4 h-4" />
                     </div>
+                    <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-widest">Finished Goods Details</h4>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">To Godown</label>
-                    <div className="relative">
-                      <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-                      <select 
-                        required
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
-                        value={formData.toGodown || ''}
-                        onChange={(e) => setFormData({...formData, toGodown: e.target.value})}
-                      >
-                        <option value="">Select Target Godown</option>
-                        {unitMaster.filter(u => u && u.id).map(u => (
-                          <option key={u.id} value={u.name}>{u.location ? `${u.name} (${u.location})` : u.name}</option>
-                        ))}
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                        <ChevronRight className="w-4 h-4 rotate-90" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Choose Godown dropdown */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Godown</label>
+                      <div className="relative">
+                        <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                        <select 
+                          required
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none animate-in fade-in"
+                          value={formData.unit || ''}
+                          onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                        >
+                          <option value="">Select Godown</option>
+                          {unitMaster.filter(u => u && u.id).map(u => (
+                            <option key={u.id} value={u.name}>
+                              {u.location ? `${u.name} (${u.location})` : u.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronRight className="w-4 h-4 rotate-90" />
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
+                    {/* Select Date */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
+                      <div className="relative">
+                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
+                        <input 
+                          required
+                          type="date"
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer"
+                          value={formData.assignedDate || ''}
+                          onChange={(e) => setFormData({ ...formData, assignedDate: e.target.value, expectedDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Select Product Description */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Description</label>
+                      <div className="relative">
+                        <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                        <select 
+                          required
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                          value={formData.items?.[0]?.modelName || ''}
+                          onChange={(e) => {
+                            const selectedDesc = e.target.value;
+                            const matchedProduct = productMaster.find(p => p && (p.description === selectedDesc || p.name === selectedDesc));
+                            const groupName = matchedProduct?.productGroupName || formData.productGroupName || '';
+                            const updatedItems = [{ 
+                              modelName: selectedDesc, 
+                              quantity: formData.items?.[0]?.quantity || 0, 
+                              rate: matchedProduct?.basePrice || 0, 
+                              size: 'XL',
+                              assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
+                              expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
+                            }];
+                            setFormData({
+                              ...formData,
+                              modelName: selectedDesc,
+                              productGroupName: groupName,
+                              items: updatedItems
+                            });
+                          }}
+                        >
+                          <option value="">Select Product Description</option>
+                          {productMaster.filter(p => p && (p.description || p.name)).map(p => {
+                            const label = p.description || p.name;
+                            return (
+                              <option key={p.id || label} value={label}>{label}</option>
+                            );
+                          })}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronRight className="w-4 h-4 rotate-90" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Product Group Name */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Group Name</label>
+                      <div className="relative">
+                        <input 
+                          required
+                          type="text"
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+                          placeholder="Enter or select Product Group Name"
+                          value={formData.productGroupName || ''}
+                          onChange={(e) => setFormData({ ...formData, productGroupName: e.target.value })}
+                          list="product-group-suggestions"
+                        />
+                        <datalist id="product-group-suggestions">
+                          {Array.from(new Set(productMaster.map(p => p.productGroupName).filter(Boolean))).map(g => (
+                            <option key={g} value={g} />
+                          ))}
+                        </datalist>
+                      </div>
+                    </div>
+
+                    {/* Enter Quantity */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Quantity</label>
                       <input 
                         required
-                        type="date"
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer"
-                        value={formData.assignedDate || ''}
-                        onChange={(e) => setFormData({...formData, assignedDate: e.target.value})}
+                        type="number"
+                        min="1"
+                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+                        placeholder="Enter quantity"
+                        value={formData.items?.[0]?.quantity || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const updatedItems = [{ 
+                            modelName: formData.items?.[0]?.modelName || '', 
+                            quantity: val, 
+                            rate: formData.items?.[0]?.rate || 0, 
+                            size: 'XL',
+                            assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
+                            expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
+                          }];
+                          setFormData({
+                            ...formData,
+                            items: updatedItems
+                          });
+                        }}
                       />
                     </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Section 2: Products & Quantities */}
-              <div className="space-y-6">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-50">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-                      <Settings2 className="w-4 h-4" />
+              ) : formData.type === 'Damage' ? (
+                /* DAMAGE ENTRY FORM COMPONENTS (choose godown dropdown, select date, select product description, enter quantity) */
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
+                    <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600">
+                      <AlertCircle className="w-4 h-4" />
                     </div>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Product to Transfer</h4>
+                    <h4 className="text-xs font-bold text-rose-800 uppercase tracking-widest">Damage Details</h4>
                   </div>
-                  {!editingId && (
-                    <button 
-                      type="button"
-                      onClick={addItemRow}
-                      className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"
-                    >
-                      <Plus className="w-3 h-3" />
-                      Add Product
-                    </button>
-                  )}
-                </div>
 
-                <div className="space-y-4">
-                  {formData.items.map((item: any, index: number) => (
-                    <div key={index} className="bg-slate-50/50 p-6 rounded-[28px] border border-slate-100 space-y-4 relative group transition-all hover:border-indigo-100 hover:shadow-sm">
-                      {formData.items.length > 1 && !editingId && (
-                        <button 
-                          type="button"
-                          onClick={() => removeItemRow(index)}
-                          className="absolute -top-3 -right-3 p-2 bg-white text-slate-400 hover:text-rose-500 rounded-full shadow-md border border-slate-100 transition-all active:scale-90"
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Choose Godown dropdown */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Godown</label>
+                      <div className="relative">
+                        <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                        <select 
+                          required
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                          value={formData.unit || ''}
+                          onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-10 gap-x-4 gap-y-4">
-                        {/* Model Select */}
-                        <div className="space-y-2 lg:col-span-7">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Model Name</label>
-                          <div className="relative">
-                            <Monitor className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 z-10" />
-                            <select 
-                              required
-                              className="w-full bg-white border border-slate-100 rounded-xl py-3 pl-10 pr-4 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm appearance-none"
-                              value={item.modelName}
-                              onChange={(e) => {
-                                const newModelName = e.target.value;
-                                const unit = unitMaster.find(u => u && u.name === formData.unit);
-                                const model = productMaster.find(p => p && p.name === newModelName);
-                                let newRate = item.rate || 0;
+                          <option value="">Select Godown</option>
+                          {unitMaster.filter(u => u && u.id).map(u => (
+                            <option key={u.id} value={u.name}>
+                              {u.location ? `${u.name} (${u.location})` : u.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronRight className="w-4 h-4 rotate-90" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Select Date */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Select Date</label>
+                      <div className="relative">
+                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
+                        <input 
+                          required
+                          type="date"
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer"
+                          value={formData.assignedDate || ''}
+                          onChange={(e) => setFormData({ ...formData, assignedDate: e.target.value, expectedDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Select Product Description */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Select Product Description</label>
+                      <div className="relative">
+                        <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                        <select 
+                          required
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                          value={formData.items?.[0]?.modelName || ''}
+                          onChange={(e) => {
+                            const selectedDesc = e.target.value;
+                            const updatedItems = [{ 
+                              modelName: selectedDesc, 
+                              quantity: formData.items?.[0]?.quantity || 0, 
+                              rate: 0, 
+                              size: 'XL',
+                              assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
+                              expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
+                            }];
+                            setFormData({
+                              ...formData,
+                              modelName: selectedDesc,
+                              items: updatedItems
+                            });
+                          }}
+                        >
+                          <option value="">Select Product Description</option>
+                          {productMaster.filter(p => p && (p.description || p.name)).map(p => {
+                            const label = p.description || p.name;
+                            return (
+                              <option key={p.id || label} value={label}>{label}</option>
+                            );
+                          })}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronRight className="w-4 h-4 rotate-90" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Enter Quantity */}
+                    <div className="space-y-2 col-span-full">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Enter Quantity</label>
+                      <input 
+                        required
+                        type="number"
+                        min="1"
+                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+                        placeholder="Enter quantity"
+                        value={formData.items?.[0]?.quantity || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const updatedItems = [{ 
+                            modelName: formData.items?.[0]?.modelName || '', 
+                            quantity: val, 
+                            rate: 0, 
+                            size: 'XL',
+                            assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
+                            expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
+                          }];
+                          setFormData({
+                            ...formData,
+                            items: updatedItems
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* REGULAR ASSIGNMENT FORM */
+                <>
+                  {/* Section 1: Godown Setup */}
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Godown Setup</h4>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">From Godown</label>
+                        <div className="relative">
+                          <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                          <select 
+                            required
+                            className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                            value={formData.unit || ''}
+                            onChange={(e) => {
+                              const newUnitName = e.target.value;
+                              const unit = unitMaster.find(u => u && u.name === newUnitName);
+                              const updatedItems = formData.items.map((item: any) => {
+                                const model = productMaster.find(p => p && p.name === item.modelName);
                                 if (unit && model) {
                                   const specificRate = unit.modelRates?.find(mr => mr && mr.modelId === model.id);
-                                  newRate = specificRate ? specificRate.rate : model.basePrice;
-                                } else if (model) {
-                                  newRate = model.basePrice;
+                                  return { ...item, rate: specificRate ? specificRate.rate : model.basePrice };
                                 }
-
-                                // Parse size suffix from selected model name with high precision
-                                const parseSizeFromModelName = (name: string): "S" | "M" | "L" | "XL" | "XXL" | null => {
-                                  if (!name) return null;
-                                  const nameUpper = name.trim().toUpperCase();
-                                  
-                                  // 1. Exact word matches first to avoid false positives (e.g. "Flora Summer XL")
-                                  const sizes: ("XXL" | "XL" | "L" | "M" | "S")[] = ["XXL", "XL", "L", "M", "S"];
-                                  for (const sz of sizes) {
-                                    const rxWord = new RegExp(`\\b${sz}\\b`, "i");
-                                    if (rxWord.test(nameUpper)) return sz;
-                                  }
-                                  
-                                  // 2. Separators: dash, parenthesis, underscore, slash
-                                  for (const sz of sizes) {
-                                    const rxBoundary = new RegExp(`[-()_/\\s\\[\\]]${sz}([-()_/\\s\\[\\]]|$)`, "i");
-                                    if (rxBoundary.test(nameUpper)) return sz;
-                                  }
-
-                                  // 3. Suffix at the end (e.g. FloraXL, SabeenaXXL)
-                                  if (nameUpper.endsWith("XXL")) return "XXL";
-                                  if (nameUpper.endsWith("XL")) return "XL";
-
-                                  // 4. One letter trailing size with casing checks (e.g., AlineL, RiyaM, but not Floral or Slim)
-                                  const trimmed = name.trim();
-                                  const last = trimmed.slice(-1);
-                                  const beforeLast = trimmed.length > 1 ? trimmed.slice(-2, -1) : "";
-                                  if (["S", "M", "L", "s", "m", "l"].includes(last)) {
-                                    const isCapital = last === last.toUpperCase();
-                                    const isBeforeLowerOrDigit = beforeLast && /[a-z0-9]/.test(beforeLast);
-                                    const isBeforeSep = beforeLast && /[-_\s/]/.test(beforeLast);
-                                    if (isBeforeSep || (isCapital && isBeforeLowerOrDigit)) {
-                                      return last.toUpperCase() as any;
-                                    }
-                                  }
-
-                                  // 5. Inclusions with custom boundaries
-                                  for (const sz of sizes) {
-                                    if (nameUpper.includes(" " + sz) || nameUpper.includes("-" + sz) || nameUpper.includes("(" + sz)) {
-                                      return sz;
-                                    }
-                                  }
-
-                                  // 6. Substring match for XL/XXL since they are unique size names
-                                  if (nameUpper.includes("XXL")) return "XXL";
-                                  if (nameUpper.includes("XL")) return "XL";
-
-                                  return null;
-                                };
-
-                                const detectedSize = parseSizeFromModelName(newModelName);
-
-                                setFormData((prev: any) => {
-                                  const newItems = [...prev.items];
-                                  newItems[index] = { 
-                                    ...newItems[index], 
-                                    modelName: newModelName, 
-                                    rate: newRate,
-                                    size: detectedSize || newItems[index].size || prev.size || 'XL'
-                                  };
-                                  return {
-                                    ...prev,
-                                    items: newItems,
-                                    ...(detectedSize ? { size: detectedSize } : {})
-                                  };
-                                });
-                              }}
-                            >
-                              <option value="">Select a Model</option>
-                              {productMaster.filter(p => p && p.name).map(p => (
-                                <option key={p.id} value={p.name}>{p.name}</option>
-                              ))}
-                            </select>
+                                return item;
+                              });
+                              setFormData({ ...formData, unit: newUnitName, items: updatedItems });
+                            }}
+                          >
+                            <option value="">Select From Godown</option>
+                            {unitMaster.filter(u => u && u.id).map(u => (
+                              <option key={u.id} value={u.name}>{u.location ? `${u.name} (${u.location})` : u.name}</option>
+                            ))}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronRight className="w-4 h-4 rotate-90" />
                           </div>
                         </div>
+                      </div>
 
-                        {/* Quantity */}
-                        <div className="space-y-2 lg:col-span-3">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-1">
-                            Qty <span className="opacity-60">({inventory.find(i => i.id === formData.inventoryItemId)?.unit === 'Pieces' ? 'pcs' : 'm'})</span>
-                          </label>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">To Godown</label>
+                        <div className="relative">
+                          <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                          <select 
+                            required
+                            className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                            value={formData.toGodown || ''}
+                            onChange={(e) => setFormData({...formData, toGodown: e.target.value})}
+                          >
+                            <option value="">Select Target Godown</option>
+                            {unitMaster.filter(u => u && u.id).map(u => (
+                              <option key={u.id} value={u.name}>{u.location ? `${u.name} (${u.location})` : u.name}</option>
+                            ))}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronRight className="w-4 h-4 rotate-90" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
+                        <div className="relative">
+                          <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
                           <input 
                             required
-                            type="number"
-                            min="0"
-                            max={getMaxAllowedForThisRow(index)}
-                            className={cn(
-                              "w-full bg-white border rounded-xl py-3 px-4 text-xs outline-none transition-all font-medium shadow-sm",
-                              item.quantity > getMaxAllowedForThisRow(index)
-                                ? "border-rose-300 ring-2 ring-rose-500/10 text-rose-600 bg-rose-50/30" 
-                                : "border-slate-100 focus:ring-2 focus:ring-indigo-500/10 text-slate-700"
-                            )}
-                            value={item.quantity || ''}
-                            onChange={(e) => {
-                              const inputVal = e.target.value;
-                              if (inputVal === '') {
-                                updateItemRow(index, { quantity: '' });
-                                return;
-                              }
-                              const val = parseFloat(inputVal) || 0;
-                              const limit = getMaxAllowedForThisRow(index);
-                              // Clamp to available stock limit
-                              const capped = Math.min(val, limit);
-                              updateItemRow(index, { quantity: capped });
-                            }}
+                            type="date"
+                            className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer"
+                            value={formData.assignedDate || ''}
+                            onChange={(e) => setFormData({...formData, assignedDate: e.target.value})}
                           />
                         </div>
                       </div>
-                      
-                      {item.quantity > getMaxAllowedForThisRow(index) && (
-                        <div className="flex items-center gap-1.5 text-[10px] text-rose-500 font-bold px-1 bg-rose-50/50 py-1.5 rounded-lg border border-rose-100">
-                          <AlertCircle className="w-3 h-3" />
-                          Exceeds available stock! (Max allowed: {getMaxAllowedForThisRow(index)})
+                    </div>
+                  </div>
+
+                  {/* Section 2: Products & Quantities */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-50">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                          <Settings2 className="w-4 h-4" />
                         </div>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Product to Transfer</h4>
+                      </div>
+                      {!editingId && (
+                        <button 
+                          type="button"
+                          onClick={addItemRow}
+                          className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Add Product
+                        </button>
                       )}
                     </div>
-                  ))}
-                </div>
 
-                {/* Conditional render of Finished Goods Delivery Details */}
-                {formData.status === 'Finished Goods' && (() => {
-                  const selectedInvItem = inventory.find(i => i.id === formData.inventoryItemId);
-                  const isMeters = selectedInvItem ? selectedInvItem.unit === 'Meters' : false;
-                  const totalQty = formData.items.reduce((sum: number, it: any) => sum + (parseFloat(it.quantity) || 0), 0) || parseFloat(formData.quantity) || 0;
+                    <div className="space-y-4">
+                      {formData.items.map((item: any, index: number) => (
+                        <div key={index} className="bg-slate-50/50 p-6 rounded-[28px] border border-slate-100 space-y-4 relative group transition-all hover:border-indigo-100 hover:shadow-sm">
+                          {formData.items.length > 1 && !editingId && (
+                            <button 
+                              type="button"
+                              onClick={() => removeItemRow(index)}
+                              className="absolute -top-3 -right-3 p-2 bg-white text-slate-400 hover:text-rose-500 rounded-full shadow-md border border-slate-100 transition-all active:scale-90"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-10 gap-x-4 gap-y-4">
+                            {/* Model Select */}
+                            <div className="space-y-2 lg:col-span-10">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Model Name</label>
+                              <div className="relative">
+                                <Monitor className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 z-10" />
+                                <select 
+                                  required
+                                  className="w-full bg-white border border-slate-100 rounded-xl py-3 pl-10 pr-4 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm appearance-none"
+                                  value={item.modelName}
+                                  onChange={(e) => {
+                                    const newModelName = e.target.value;
+                                    const unit = unitMaster.find(u => u && u.name === formData.unit);
+                                    const model = productMaster.find(p => p && p.name === newModelName);
+                                    let newRate = item.rate || 0;
+                                    if (unit && model) {
+                                      const specificRate = unit.modelRates?.find(mr => mr && mr.modelId === model.id);
+                                      newRate = specificRate ? specificRate.rate : model.basePrice;
+                                    } else if (model) {
+                                      newRate = model.basePrice;
+                                    }
 
-                  if (isMeters) {
-                    const computedFinishedMeters = formData.finishedMeters !== undefined ? parseFloat(formData.finishedMeters) : (formData.allMetersDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balanceMeters) || 0)));
-                    const curFinishedMeters = isNaN(computedFinishedMeters) ? 0 : computedFinishedMeters;
-                    const computedBalanceMeters = formData.balanceMeters !== undefined ? parseFloat(formData.balanceMeters) : (formData.allMetersDelivered ? 0 : totalQty);
-                    const curBalanceMeters = isNaN(computedBalanceMeters) ? 0 : computedBalanceMeters;
+                                    // Parse size suffix from selected model name with high precision
+                                    const parseSizeFromModelName = (name: string): "S" | "M" | "L" | "XL" | "XXL" | null => {
+                                      if (!name) return null;
+                                      const nameUpper = name.trim().toUpperCase();
+                                      
+                                      // 1. Exact word matches first to avoid false positives (e.g. "Flora Summer XL")
+                                      const sizes: ("XXL" | "XL" | "L" | "M" | "S")[] = ["XXL", "XL", "L", "M", "S"];
+                                      for (const sz of sizes) {
+                                        const rxWord = new RegExp(`\\b${sz}\\b`, "i");
+                                        if (rxWord.test(nameUpper)) return sz;
+                                      }
+                                      
+                                      // 2. Separators: dash, parenthesis, underscore, slash
+                                      for (const sz of sizes) {
+                                        const rxBoundary = new RegExp(`[-()_/\\s\\[\\]]${sz}([-()_/\\s\\[\\]]|$)`, "i");
+                                        if (rxBoundary.test(nameUpper)) return sz;
+                                      }
 
-                    return (
-                      <div className="col-span-full mt-4 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
-                        <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          Finished Goods Delivery Details
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (m)</label>
-                            <input 
-                              type="number"
-                              required
-                              min="0"
-                              max={totalQty}
-                              className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                              placeholder={`Max: ${totalQty} m`}
-                              value={curFinishedMeters}
-                              onChange={(e) => {
-                                let finishedVal = parseFloat(e.target.value);
-                                if (isNaN(finishedVal)) finishedVal = 0;
-                                finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
-                                const bal = Math.max(0, totalQty - finishedVal);
-                                setFormData({
-                                  ...formData,
-                                  finishedMeters: finishedVal,
-                                  balanceMeters: bal,
-                                  allMetersDelivered: bal === 0
-                                });
-                              }}
-                            />
+                                      // 3. Suffix at the end (e.g. FloraXL, SabeenaXXL)
+                                      if (nameUpper.endsWith("XXL")) return "XXL";
+                                      if (nameUpper.endsWith("XL")) return "XL";
+
+                                      // 4. One letter trailing size with casing checks (e.g., AlineL, RiyaM, but not Floral or Slim)
+                                      const trimmed = name.trim();
+                                      const last = trimmed.slice(-1);
+                                      const beforeLast = trimmed.length > 1 ? trimmed.slice(-2, -1) : "";
+                                      if (["S", "M", "L", "s", "m", "l"].includes(last)) {
+                                        const isCapital = last === last.toUpperCase();
+                                        const isBeforeLowerOrDigit = beforeLast && /[a-z0-9]/.test(beforeLast);
+                                        const isBeforeSep = beforeLast && /[-_\s/]/.test(beforeLast);
+                                        if (isBeforeSep || (isCapital && isBeforeLowerOrDigit)) {
+                                          return last.toUpperCase() as any;
+                                        }
+                                      }
+
+                                      // 5. Inclusions with custom boundaries
+                                      for (const sz of sizes) {
+                                        if (nameUpper.includes(" " + sz) || nameUpper.includes("-" + sz) || nameUpper.includes("(" + sz)) {
+                                          return sz;
+                                        }
+                                      }
+
+                                      // 6. Substring match for XL/XXL since they are unique size names
+                                      if (nameUpper.includes("XXL")) return "XXL";
+                                      if (nameUpper.includes("XL")) return "XL";
+
+                                      return null;
+                                    };
+
+                                    const detectedSize = parseSizeFromModelName(newModelName);
+
+                                    setFormData((prev: any) => {
+                                      const newItems = [...prev.items];
+                                      newItems[index] = { 
+                                        ...newItems[index], 
+                                        modelName: newModelName, 
+                                        rate: newRate,
+                                        size: detectedSize || newItems[index].size || prev.size || 'XL'
+                                      };
+                                      return {
+                                        ...prev,
+                                        items: newItems,
+                                        ...(detectedSize ? { size: detectedSize } : {})
+                                      };
+                                    });
+                                  }}
+                                >
+                                  <option value="">Select a Model</option>
+                                  {productMaster.filter(p => p && p.name).map(p => (
+                                    <option key={p.id} value={p.name}>{p.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Quantity */}
+                            <div className="space-y-2 lg:col-span-10">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-1">
+                                Qty <span className="opacity-60">({inventory.find(i => i.id === formData.inventoryItemId)?.unit === 'Pieces' ? 'pcs' : 'm'})</span>
+                              </label>
+                              <input 
+                                required
+                                type="number"
+                                min="0"
+                                max={getMaxAllowedForThisRow(index)}
+                                className={cn(
+                                  "w-full bg-white border rounded-xl py-3 px-4 text-xs outline-none transition-all font-medium shadow-sm",
+                                  item.quantity > getMaxAllowedForThisRow(index)
+                                    ? "border-rose-300 ring-2 ring-rose-500/10 text-rose-600 bg-rose-50/30" 
+                                    : "border-slate-100 focus:ring-2 focus:ring-indigo-500/10 text-slate-700"
+                                )}
+                                value={item.quantity || ''}
+                                onChange={(e) => {
+                                  const inputVal = e.target.value;
+                                  if (inputVal === '') {
+                                    updateItemRow(index, { quantity: '' });
+                                    return;
+                                  }
+                                  const val = parseFloat(inputVal) || 0;
+                                  const limit = getMaxAllowedForThisRow(index);
+                                  // Clamp to available stock limit
+                                  const capped = Math.min(val, limit);
+                                  updateItemRow(index, { quantity: capped });
+                                }}
+                              />
+                            </div>
                           </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Meters (m)</label>
-                            <input 
-                              type="number"
-                              required
-                              min="0"
-                              max={totalQty}
-                              className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                              placeholder="Enter balance meters"
-                              value={curBalanceMeters}
-                              onChange={(e) => {
-                                let balVal = parseFloat(e.target.value);
-                                if (isNaN(balVal)) balVal = 0;
-                                balVal = Math.min(totalQty, Math.max(0, balVal));
-                                const finished = Math.max(0, totalQty - balVal);
-                                setFormData({
-                                  ...formData,
-                                  balanceMeters: balVal,
-                                  finishedMeters: finished,
-                                  allMetersDelivered: balVal === 0
-                                });
-                              }}
-                            />
-                          </div>
+                          
+                          {item.quantity > getMaxAllowedForThisRow(index) && (
+                            <div className="flex items-center gap-1.5 text-[10px] text-rose-500 font-bold px-1 bg-rose-50/50 py-1.5 rounded-lg border border-rose-100">
+                              <AlertCircle className="w-3 h-3" />
+                              Exceeds available stock! (Max allowed: {getMaxAllowedForThisRow(index)})
+                            </div>
+                          )}
                         </div>
-                        <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
-                          <span>Total Assigned: {totalQty} meters</span>
-                          <span>{curBalanceMeters > 0 ? `⚠️ Pending Balance: ${curBalanceMeters} meters` : '✅ All Meters Delivered'}</span>
-                        </div>
-                      </div>
-                    );
-                  } else {
-                    const computedFinishedPieces = formData.finishedPieces !== undefined ? parseFloat(formData.finishedPieces) : (formData.allPiecesDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balancePieces) || 0)));
-                    const curFinishedPieces = isNaN(computedFinishedPieces) ? 0 : computedFinishedPieces;
-                    const computedBalancePieces = formData.balancePieces !== undefined ? parseFloat(formData.balancePieces) : (formData.allPiecesDelivered ? 0 : totalQty);
-                    const curBalancePieces = isNaN(computedBalancePieces) ? 0 : computedBalancePieces;
+                      ))}
+                    </div>
 
-                    return (
-                      <div className="col-span-full mt-4 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
-                        <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                          Finished Goods Delivery Details
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (pcs)</label>
-                            <input 
-                              type="number"
-                              required
-                              min="0"
-                              max={totalQty}
-                              className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                              placeholder={`Max: ${totalQty} pcs`}
-                              value={curFinishedPieces}
-                              onChange={(e) => {
-                                let finishedVal = parseFloat(e.target.value);
-                                if (isNaN(finishedVal)) finishedVal = 0;
-                                finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
-                                const bal = Math.max(0, totalQty - finishedVal);
-                                setFormData({
-                                  ...formData,
-                                  finishedPieces: finishedVal,
-                                  balancePieces: bal,
-                                  allPiecesDelivered: bal === 0
-                                });
-                              }}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Pieces (pcs)</label>
-                            <input 
-                              type="number"
-                              required
-                              min="0"
-                              max={totalQty}
-                              className="w-full bg-[#f8faff] border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
-                              placeholder="Enter balance pcs"
-                              value={curBalancePieces}
-                              onChange={(e) => {
-                                let balVal = parseFloat(e.target.value);
-                                if (isNaN(balVal)) balVal = 0;
-                                balVal = Math.min(totalQty, Math.max(0, balVal));
-                                const finished = Math.max(0, totalQty - balVal);
-                                setFormData({
-                                  ...formData,
-                                  balancePieces: balVal,
-                                  finishedPieces: finished,
-                                  allPiecesDelivered: balVal === 0
-                                });
-                              }}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
-                          <span>Total Assigned: {totalQty} pcs</span>
-                          <span>{curBalancePieces > 0 ? `⚠️ Pending Balance: ${curBalancePieces} pcs` : '✅ All Pieces Delivered'}</span>
-                        </div>
-                      </div>
-                    );
-                  }
-                })()}
-              </div>
+                    {/* Conditional render of Finished Goods Delivery Details */}
+                    {formData.status === 'Finished Goods' && (() => {
+                      const selectedInvItem = inventory.find(i => i.id === formData.inventoryItemId);
+                      const isMeters = selectedInvItem ? selectedInvItem.unit === 'Meters' : false;
+                      const totalQty = formData.items.reduce((sum: number, it: any) => sum + (parseFloat(it.quantity) || 0), 0) || parseFloat(formData.quantity) || 0;
 
+                      if (isMeters) {
+                        const computedFinishedMeters = formData.finishedMeters !== undefined ? parseFloat(formData.finishedMeters) : (formData.allMetersDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balanceMeters) || 0)));
+                        const curFinishedMeters = isNaN(computedFinishedMeters) ? 0 : computedFinishedMeters;
+                        const computedBalanceMeters = formData.balanceMeters !== undefined ? parseFloat(formData.balanceMeters) : (formData.allMetersDelivered ? 0 : totalQty);
+                        const curBalanceMeters = isNaN(computedBalanceMeters) ? 0 : computedBalanceMeters;
+
+                        return (
+                          <div className="col-span-full mt-4 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
+                            <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Finished Goods Delivery Details
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (m)</label>
+                                <input 
+                                  type="number"
+                                  required
+                                  min="0"
+                                  max={totalQty}
+                                  className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                                  placeholder={`Max: ${totalQty} m`}
+                                  value={curFinishedMeters}
+                                  onChange={(e) => {
+                                    let finishedVal = parseFloat(e.target.value);
+                                    if (isNaN(finishedVal)) finishedVal = 0;
+                                    finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
+                                    const bal = Math.max(0, totalQty - finishedVal);
+                                    setFormData({
+                                      ...formData,
+                                      finishedMeters: finishedVal,
+                                      balanceMeters: bal,
+                                      allMetersDelivered: bal === 0
+                                    });
+                                  }}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Meters (m)</label>
+                                <input 
+                                  type="number"
+                                  required
+                                  min="0"
+                                  max={totalQty}
+                                  className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                                  placeholder="Enter balance meters"
+                                  value={curBalanceMeters}
+                                  onChange={(e) => {
+                                    let balVal = parseFloat(e.target.value);
+                                    if (isNaN(balVal)) balVal = 0;
+                                    balVal = Math.min(totalQty, Math.max(0, balVal));
+                                    const finished = Math.max(0, totalQty - balVal);
+                                    setFormData({
+                                      ...formData,
+                                      balanceMeters: balVal,
+                                      finishedMeters: finished,
+                                      allMetersDelivered: balVal === 0
+                                    });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
+                              <span>Total Assigned: {totalQty} m</span>
+                              <span>{curBalanceMeters > 0 ? `⚠️ Pending Balance: ${curBalanceMeters} m` : '✅ All Meters Delivered'}</span>
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        const computedFinishedPieces = formData.finishedPieces !== undefined ? parseFloat(formData.finishedPieces) : (formData.allPiecesDelivered ? totalQty : Math.max(0, totalQty - (parseFloat(formData.balancePieces) || 0)));
+                        const curFinishedPieces = isNaN(computedFinishedPieces) ? 0 : computedFinishedPieces;
+                        const computedBalancePieces = formData.balancePieces !== undefined ? parseFloat(formData.balancePieces) : (formData.allPiecesDelivered ? 0 : totalQty);
+                        const curBalancePieces = isNaN(computedBalancePieces) ? 0 : computedBalancePieces;
+
+                        return (
+                          <div className="col-span-full mt-4 p-6 bg-emerald-50/50 rounded-[28px] border border-emerald-100 space-y-4 animate-in slide-in-from-top-2 duration-350">
+                            <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Finished Goods Delivery Details
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm">
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Finished Goods Delivered (pcs)</label>
+                                <input 
+                                  type="number"
+                                  required
+                                  min="0"
+                                  max={totalQty}
+                                  className="w-full bg-emerald-50/10 border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                                  placeholder={`Max: ${totalQty} pcs`}
+                                  value={curFinishedPieces}
+                                  onChange={(e) => {
+                                    let finishedVal = parseFloat(e.target.value);
+                                    if (isNaN(finishedVal)) finishedVal = 0;
+                                    finishedVal = Math.min(totalQty, Math.max(0, finishedVal));
+                                    const bal = Math.max(0, totalQty - finishedVal);
+                                    setFormData({
+                                      ...formData,
+                                      finishedPieces: finishedVal,
+                                      balancePieces: bal,
+                                      allPiecesDelivered: bal === 0
+                                    });
+                                  }}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Remaining Balance Pieces (pcs)</label>
+                                <input 
+                                  type="number"
+                                  required
+                                  min="0"
+                                  max={totalQty}
+                                  className="w-full bg-[#f8faff] border border-slate-100 rounded-xl py-3 px-4 text-xs outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-slate-700 shadow-sm transition-all"
+                                  placeholder="Enter balance pcs"
+                                  value={curBalancePieces}
+                                  onChange={(e) => {
+                                    let balVal = parseFloat(e.target.value);
+                                    if (isNaN(balVal)) balVal = 0;
+                                    balVal = Math.min(totalQty, Math.max(0, balVal));
+                                    const finished = Math.max(0, totalQty - balVal);
+                                    setFormData({
+                                      ...formData,
+                                      balancePieces: balVal,
+                                      finishedPieces: finished,
+                                      allPiecesDelivered: balVal === 0
+                                    });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center text-[10px] text-emerald-700 font-bold px-1 pt-1">
+                              <span>Total Assigned: {totalQty} pcs</span>
+                              <span>{curBalancePieces > 0 ? `⚠️ Pending Balance: ${curBalancePieces} pcs` : '✅ All Pieces Delivered'}</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                    })()}
+                  </div>
+                </>
+              )}
 
 
               <div className="pt-8 flex gap-4">
@@ -1155,7 +1503,7 @@ export default function ProductionUnits({
                   type="submit"
                   className="flex-2 px-6 py-4 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98]"
                 >
-                  {editingId ? 'Save Changes' : 'Confirm Transfer'}
+                  {editingId ? 'Save Changes' : (formData.type === 'Damage' ? 'Confirm Damage' : 'Confirm Transfer')}
                 </button>
               </div>
             </form>

@@ -96,8 +96,14 @@ export interface CustomerMaster {
   createdAt: string;
 }
 
+export interface StyleMaster {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export default function ProductMaster() {
-  const [activeTab, setActiveTab] = useState<'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports'>('models');
+  const [activeTab, setActiveTab] = useState<'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'style'>('models');
   const [products, setProducts] = useState<ProductModel[]>([]);
   const [units, setUnits] = useState<ProductionUnitMaster[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierMaster[]>([]);
@@ -105,6 +111,7 @@ export default function ProductMaster() {
   const [incomes, setIncomes] = useState<IncomeMaster[]>([]);
   const [customers, setCustomers] = useState<CustomerMaster[]>([]);
   const [transports, setTransports] = useState<TransportMaster[]>([]);
+  const [styles, setStyles] = useState<StyleMaster[]>([]);
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -120,6 +127,7 @@ export default function ProductMaster() {
   const [customerMobileError, setCustomerMobileError] = useState('');
   const [supplierMobileError, setSupplierMobileError] = useState('');
   const [transportFormData, setTransportFormData] = useState<Partial<TransportMaster>>({});
+  const [styleFormData, setStyleFormData] = useState<Partial<StyleMaster>>({});
 
   useEffect(() => {
     const deduplicateByIdLocal = <T extends { id: string }>(items: T[]): T[] => {
@@ -288,6 +296,26 @@ export default function ProductMaster() {
       setTransports(demoTransports);
       localStorage.setItem('inven_transports', JSON.stringify(demoTransports));
     }
+
+    const savedStyles = localStorage.getItem('inven_style_master');
+    if (savedStyles) {
+      try {
+        const parsed = JSON.parse(savedStyles);
+        const deduped = deduplicateByIdLocal(parsed);
+        setStyles(deduped);
+        if (deduped.length !== parsed.length) {
+          localStorage.setItem('inven_style_master', JSON.stringify(deduped));
+        }
+      } catch (e) { console.error(e); }
+    } else {
+      const demoStyles: StyleMaster[] = [
+        { id: 'STY-001', name: 'NIGHTY SINGLE COLLAR', createdAt: new Date().toISOString() },
+        { id: 'STY-002', name: 'NIGHTY DOUBLE COLLAR', createdAt: new Date().toISOString() },
+        { id: 'STY-003', name: 'A-LINE STYLE', createdAt: new Date().toISOString() }
+      ];
+      setStyles(demoStyles);
+      localStorage.setItem('inven_style_master', JSON.stringify(demoStyles));
+    }
   }, []);
 
   const saveProducts = (data: ProductModel[]) => {
@@ -323,6 +351,11 @@ export default function ProductMaster() {
   const saveTransports = (data: TransportMaster[]) => {
     setTransports(data);
     localStorage.setItem('inven_transports', JSON.stringify(data));
+  };
+
+  const saveStyles = (data: StyleMaster[]) => {
+    setStyles(data);
+    localStorage.setItem('inven_style_master', JSON.stringify(data));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -656,6 +689,28 @@ export default function ProductMaster() {
         };
         saveTransports([newTransport, ...transports]);
       }
+    } else if (activeTab === 'style') {
+      const updatedData = {
+        name: (styleFormData.name || '').toUpperCase().trim()
+      };
+      if (editingId) {
+        const updated = styles.map(s => s.id === editingId ? { ...s, ...updatedData } : s);
+        saveStyles(updated);
+      } else {
+        let generatedId = '';
+        let exists = true;
+        while (exists) {
+          generatedId = `STY-${Math.floor(100 + Math.random() * 900)}`;
+          exists = styles.some(s => s && s.id === generatedId);
+        }
+
+        const newStyle: StyleMaster = {
+          id: generatedId,
+          name: updatedData.name,
+          createdAt: new Date().toISOString(),
+        };
+        saveStyles([newStyle, ...styles]);
+      }
     }
 
     setIsFormOpen(false);
@@ -673,6 +728,7 @@ export default function ProductMaster() {
     setCustomerMobileError('');
     setSupplierMobileError('');
     setTransportFormData({});
+    setStyleFormData({});
   };
 
   const deleteItem = (id: string, name: string) => {
@@ -694,6 +750,8 @@ export default function ProductMaster() {
       saveCustomers(customers.filter(c => c.id !== id));
     } else if (activeTab === 'transports') {
       saveTransports(transports.filter(t => t.id !== id));
+    } else if (activeTab === 'style') {
+      saveStyles(styles.filter(s => s.id !== id));
     } else if (activeTab === 'income') {
       saveIncomes(incomes.filter(b => b.id !== id));
     } else {
@@ -714,9 +772,11 @@ export default function ProductMaster() {
           ? customers.filter(c => c && ((c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (c.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
           : activeTab === 'transports'
             ? transports.filter(t => t && ((t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (t.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
-            : activeTab === 'income'
-              ? incomes.filter(b => b && ((b.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (b.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
-              : expenses.filter(e => e && ((e.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.id || '').toLowerCase().includes(searchQuery.toLowerCase())));
+            : activeTab === 'style'
+              ? styles.filter(s => s && ((s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
+              : activeTab === 'income'
+                ? incomes.filter(b => b && ((b.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (b.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
+                : expenses.filter(e => e && ((e.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.id || '').toLowerCase().includes(searchQuery.toLowerCase())));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -730,11 +790,11 @@ export default function ProductMaster() {
           className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
         >
           <Plus className="w-4 h-4" />
-          Add {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'income' ? 'Income Category' : 'Expense'}
+          Add {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'style' ? 'Style' : activeTab === 'income' ? 'Income Category' : 'Expense'}
         </button>
       </div>
 
-      <div className="flex gap-2 p-1 bg-slate-100 w-fit rounded-2xl">
+      <div className="flex gap-2 p-1 bg-slate-100 w-fit rounded-2xl flex-wrap">
         <button 
           onClick={() => { setActiveTab('models'); setSearchQuery(''); }}
           className={cn(
@@ -763,24 +823,6 @@ export default function ProductMaster() {
           Suppliers
         </button>
         <button 
-          onClick={() => { setActiveTab('expenses'); setSearchQuery(''); }}
-          className={cn(
-            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-            activeTab === 'expenses' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          )}
-        >
-          Expenses
-        </button>
-        <button 
-          onClick={() => { setActiveTab('income'); setSearchQuery(''); }}
-          className={cn(
-            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-            activeTab === 'income' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          )}
-        >
-          Income
-        </button>
-        <button 
           onClick={() => { setActiveTab('customers'); setSearchQuery(''); }}
           className={cn(
             "px-6 py-2 rounded-xl text-sm font-bold transition-all",
@@ -797,6 +839,15 @@ export default function ProductMaster() {
           )}
         >
           Transports
+        </button>
+        <button 
+          onClick={() => { setActiveTab('style'); setSearchQuery(''); }}
+          className={cn(
+            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+            activeTab === 'style' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Style
         </button>
       </div>
 
@@ -1085,6 +1136,34 @@ export default function ProductMaster() {
               </div>
             </div>
           ))
+        ) : activeTab === 'style' ? (
+          (filteredItems as StyleMaster[]).filter(s => s && s.name).map((style) => (
+            <div key={style.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                 <div className="flex gap-1">
+                    <button 
+                      onClick={() => { setEditingId(style.id); setStyleFormData(style); setIsFormOpen(true); }}
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => deleteItem(style.id, style.name)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                 </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shrink-0">
+                  <Tag className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{style.id}</p>
+                  <h4 className="text-lg font-bold text-slate-800 uppercase leading-snug">{style.name}</h4>
+                </div>
+              </div>
+            </div>
+          ))
         ) : activeTab === 'income' ? (
           (filteredItems as IncomeMaster[]).filter(b => b && b.name).map((income) => (
             <div key={income.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
@@ -1150,7 +1229,7 @@ export default function ProductMaster() {
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">
-                  {editingId ? 'Edit' : 'Add New'} {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : 'Expense Category'}
+                  {editingId ? 'Edit' : 'Add New'} {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'style' ? 'Style' : 'Expense Category'}
                 </h3>
               </div>
               <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
@@ -1581,6 +1660,22 @@ export default function ProductMaster() {
                     </div>
                   </div>
                 </>
+              ) : activeTab === 'style' ? (
+                <>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Style Name</label>
+                      <input 
+                        required
+                        type="text" 
+                        placeholder=""
+                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm uppercase"
+                        value={styleFormData.name || ''}
+                        onChange={(e) => setStyleFormData({...styleFormData, name: e.target.value.toUpperCase()})}
+                      />
+                    </div>
+                  </div>
+                </>
               ) : activeTab === 'income' ? (
                 <>
                   <div className="space-y-4">
@@ -1606,7 +1701,7 @@ export default function ProductMaster() {
                         required
                         type="text" 
                         placeholder="e.g. Machine Maintenance"
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                        className="w-[#f8faff] w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
                         value={expenseFormData.name || ''}
                         onChange={(e) => setExpenseFormData({...expenseFormData, name: e.target.value})}
                       />
@@ -1627,7 +1722,7 @@ export default function ProductMaster() {
                   type="submit"
                   className="flex-1 px-6 py-4 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100"
                 >
-                  Save {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : 'Expense'}
+                  Save {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'style' ? 'Style' : 'Expense'}
                 </button>
               </div>
             </form>
