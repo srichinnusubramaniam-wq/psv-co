@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FileText, 
   Search, 
@@ -84,10 +84,11 @@ interface GeneratedInvoice {
   paidAmount?: number;
 }
 
-const parseSafeDate = (dateStr: string): Date => {
+const parseSafeDate = (dateStr: any): Date => {
   if (!dateStr) return new Date();
-  if (dateStr.includes('/')) {
-    const parts = dateStr.trim().split('/');
+  const str = String(dateStr).trim();
+  if (str.includes('/')) {
+    const parts = str.split('/');
     if (parts.length === 3) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
@@ -97,7 +98,7 @@ const parseSafeDate = (dateStr: string): Date => {
       }
     }
   }
-  const parsed = new Date(dateStr);
+  const parsed = new Date(str);
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 };
 
@@ -111,6 +112,15 @@ export default function Invoice({
   const [activeTab, setActiveTab] = useState<'sale_goods' | 'pending' | 'pending_payments' | 'generated'>('sale_goods');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [reportFormat, setReportFormat] = useState<'excel' | 'pdf'>('excel');
+
+  const appSettings = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('inven_settings');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }, []);
 
   const handleInvoiceExcelExport = () => {
     const headers = [
@@ -1730,9 +1740,9 @@ export default function Invoice({
                 <div className="text-center border-b-[1.5px] border-slate-800 py-4 relative">
                   <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-2">
                     <div className="w-22 h-22 bg-white flex items-center justify-center border border-slate-50 overflow-hidden">
-                      {JSON.parse(localStorage.getItem('inven_settings') || '{}').companyLogo ? (
+                      {appSettings.companyLogo ? (
                         <img 
-                          src={JSON.parse(localStorage.getItem('inven_settings') || '{}').companyLogo} 
+                          src={appSettings.companyLogo} 
                           alt="Logo" 
                           className="max-w-full max-h-full object-contain"
                         />
@@ -1744,10 +1754,10 @@ export default function Invoice({
                   <h1 className="text-2xl font-black uppercase tracking-tight">Tax Invoice</h1>
                   <p className="text-[10px] font-medium italic mt-0.5">Subject to Jurisdiction</p>
                   <h2 className="text-xl font-black mt-1 uppercase tracking-wider">
-                    {JSON.parse(localStorage.getItem('inven_settings') || '{}').companyName || 'GAYATHRI TEXTILES'}
+                    {appSettings.companyName || 'GAYATHRI TEXTILES'}
                   </h2>
                   <div className="text-[11px] font-bold mx-auto max-w-[500px] whitespace-pre-line">
-                    {JSON.parse(localStorage.getItem('inven_settings') || '{}').companyAddress || 'No.25B, South Vaniyar Street\nNear TDCC BANK, Thathiengarpet, Trichy, Tamil Nadu - 621214'}
+                    {appSettings.companyAddress || 'No.25B, South Vaniyar Street\nNear TDCC BANK, Thathiengarpet, Trichy, Tamil Nadu - 621214'}
                   </div>
                   <p className="text-[11px] font-black mt-1">GSTIN : 33CKBPP4366D1ZC</p>
                 </div>
@@ -1912,7 +1922,7 @@ export default function Invoice({
                   <div className="border-r-[1.5px] border-slate-800"></div>
                   <div className="text-center flex flex-col justify-between py-2">
                     <p className="text-[12px] font-black uppercase tracking-widest">
-                      For {JSON.parse(localStorage.getItem('inven_settings') || '{}').companyName || 'GAYATHRI TEXTILES'}
+                      For {appSettings.companyName || 'GAYATHRI TEXTILES'}
                     </p>
                     <p className="text-[10px] font-bold">Authorised Signature</p>
                   </div>
@@ -1926,7 +1936,7 @@ export default function Invoice({
               </div>
 
               <div className="mt-4 text-center text-[10px] font-bold text-slate-500">
-                {JSON.parse(localStorage.getItem('inven_settings') || '{}').companyName || 'GAYATHRI TEXTILES'}, {JSON.parse(localStorage.getItem('inven_settings') || '{}').companyAddress?.split('\n')[0] || 'No.25B, South Vaniyar Street, Near TDCC BANK, Thathiengarpet, Trichy - 621214'}
+                {appSettings.companyName || 'GAYATHRI TEXTILES'}, {appSettings.companyAddress?.split('\n')[0] || 'No.25B, South Vaniyar Street, Near TDCC BANK, Thathiengarpet, Trichy - 621214'}
               </div>
             </div>
           </div>

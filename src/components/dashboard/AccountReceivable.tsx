@@ -2,10 +2,11 @@ import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { CheckCircle } from 'lucide-react';
 
-const parseSafeDate = (dateStr: string): Date => {
+const parseSafeDate = (dateStr: any): Date => {
   if (!dateStr) return new Date();
-  if (dateStr.includes('/')) {
-    const parts = dateStr.trim().split('/');
+  const str = String(dateStr).trim();
+  if (str.includes('/')) {
+    const parts = str.split('/');
     if (parts.length === 3) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
@@ -15,7 +16,7 @@ const parseSafeDate = (dateStr: string): Date => {
       }
     }
   }
-  const parsed = new Date(dateStr);
+  const parsed = new Date(str);
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 };
 
@@ -37,7 +38,8 @@ export default function AccountReceivable() {
           const dateObj = parseSafeDate(inv.date);
           if (!isNaN(dateObj.getTime())) {
             hasReceivables = true;
-            const monthName = dateObj.toLocaleString('default', { month: 'short' });
+            const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthName = monthsShort[dateObj.getMonth()] || 'Jan';
             if (monthlySum[monthName] !== undefined) {
               monthlySum[monthName] += balance;
             }

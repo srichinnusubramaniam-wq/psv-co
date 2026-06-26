@@ -21,8 +21,12 @@ export default function Header({ onViewChange }: { onViewChange?: (view: string)
   const [notificationCount, setNotificationCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(() => {
-    const saved = localStorage.getItem('inven_sound_muted');
-    return saved ? JSON.parse(saved) : false;
+    try {
+      const saved = localStorage.getItem('inven_sound_muted');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
   });
 
   const [lowStockItems, setLowStockItems] = useState<any[]>([]);

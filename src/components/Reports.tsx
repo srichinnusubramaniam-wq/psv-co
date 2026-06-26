@@ -170,10 +170,11 @@ export default function Reports() {
     setEndDate(today.toISOString().split('T')[0]);
   };
 
-  const parseSafeDate = (dateStr: string): Date => {
+  const parseSafeDate = (dateStr: any): Date => {
     if (!dateStr) return new Date();
-    if (dateStr.includes('/')) {
-      const parts = dateStr.trim().split('/');
+    const str = String(dateStr).trim();
+    if (str.includes('/')) {
+      const parts = str.split('/');
       if (parts.length === 3) {
         const day = parseInt(parts[0], 10);
         const month = parseInt(parts[1], 10) - 1;
@@ -183,7 +184,7 @@ export default function Reports() {
         }
       }
     }
-    const parsed = new Date(dateStr);
+    const parsed = new Date(str);
     return isNaN(parsed.getTime()) ? new Date() : parsed;
   };
 

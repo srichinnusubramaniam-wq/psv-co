@@ -344,7 +344,7 @@ export default function ProductionUnits({
       }
     } else {
       const newAssignments: ProductionAssignment[] = formData.items.map((item: any) => {
-        const prefix = formData.type === 'Damage' ? 'DMG' : (settings.prodPrefix || 'PRD');
+        const prefix = formData.type === 'Damage' ? 'DMG' : (formData.type === 'Finished Goods' ? 'FIN' : (settings.prodPrefix || 'PRD'));
         const id = `${prefix}-${currentNextId.toString().padStart(4, '0')}`;
         currentNextId++;
         const totalQty = item.quantity || 0;
@@ -632,7 +632,7 @@ export default function ProductionUnits({
                     {statusFilter === 'Finished Goods' ? 'Godown & Product Details' : (statusFilter === 'Damage' ? 'Godown & Product Description' : 'Godown Route & Model')}
                   </th>
                   <th className="px-6 py-4">
-                    {statusFilter === 'Finished Goods' ? 'Quantity' : (statusFilter === 'Damage' ? 'Damage Qty' : 'Quantity')}
+                    {statusFilter === 'Finished Goods' ? 'Quantity' : (statusFilter === 'Damage' ? 'Damage Qty' : 'Size & Qty')}
                   </th>
                   <th className="px-6 py-4">
                     {statusFilter === 'Finished Goods' ? 'Receipt Date' : (statusFilter === 'Damage' ? 'Damage Date' : 'Transfer Date')}
@@ -652,17 +652,7 @@ export default function ProductionUnits({
                       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                         <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                          {(() => {
-                            const cleanUnit = (item.unit || '').replace(/undefined/gi, '').trim();
-                            const cleanTo = (item.toGodown && item.toGodown !== 'undefined' && item.toGodown !== 'null') ? item.toGodown : '';
-                            const cleanCustomer = (item.customerId && item.customerId !== 'undefined' && item.customerId !== 'null') ? item.customerId : '';
-                            return statusFilter === 'Finished Goods' 
-                              ? `Godown: ${cleanUnit}` 
-                              : (statusFilter === 'Damage' 
-                                  ? `Godown: ${cleanUnit}` 
-                                  : `From: ${cleanUnit}${cleanTo ? ` → To: ${cleanTo}` : ''}${cleanCustomer && ` • ${customers.find(c => c && c.id === cleanCustomer)?.name || cleanCustomer}`}`
-                                );
-                          })()}
+                          {statusFilter === 'Finished Goods' ? `Godown: ${item.unit}` : (statusFilter === 'Damage' ? `Godown: ${item.unit}` : `From: ${item.unit}${item.toGodown ? ` → To: ${item.toGodown}` : ''}${item.customerId && ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}`}`)}
                         </p>
                         {item.productGroupName && (
                           <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded uppercase tracking-wider">
@@ -673,6 +663,9 @@ export default function ProductionUnits({
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
+                        {statusFilter !== 'Finished Goods' && statusFilter !== 'Damage' && (
+                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 tracking-tighter">SIZE {item.size}</span>
+                        )}
                         <p className="text-sm font-bold text-slate-800">
                           {statusFilter === 'Finished Goods' ? (
                             `${item.quantity} pcs`

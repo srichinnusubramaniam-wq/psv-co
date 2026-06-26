@@ -52,7 +52,7 @@ export interface InventoryItem {
   creditDays?: number;
   dueDate?: string;
   totalCost?: number;
-  rawMaterialType?: 'yarn' | 'cloth';
+  rawMaterialType?: 'yarn' | 'cloth' | 'jari';
   yarnQuantity?: number;
   amount?: number;
   cgst?: number;
@@ -348,8 +348,9 @@ export default function Inventory() {
     const supplierName = selectedSupplier ? (selectedSupplier.name || selectedSupplier.companyName || 'Unknown') : 'Unknown';
 
     const isYarn = formData.rawMaterialType === 'yarn';
+    const isJari = formData.rawMaterialType === 'jari';
     const finalFabricType = isYarn ? 'Yarn' : (formData.fabricType || 'Cotton');
-    const finalUnit = isYarn ? 'KGs' : (formData.unit || 'Meters');
+    const finalUnit = (isYarn || isJari) ? 'KGs' : (formData.unit || 'Meters');
     const finalQty = isYarn ? (formData.yarnQuantity || 0) : (formData.quantity || 0);
 
     const grossTotal = formData.amount !== undefined
@@ -758,10 +759,11 @@ export default function Inventory() {
                           onClick={() => { 
                             setEditingId(item.id); 
                             const isYarnItem = item.rawMaterialType === 'yarn' || item.fabricType === 'Yarn';
+                            const isJariItem = item.rawMaterialType === 'jari' || item.fabricType === 'Jari';
                             const totalVal = item.totalCost !== undefined ? item.totalCost : (item.pricePerMeter || 0) * (item.quantity || 0);
                             setFormData({
                               ...item,
-                              rawMaterialType: isYarnItem ? 'yarn' : 'cloth',
+                              rawMaterialType: isYarnItem ? 'yarn' : (isJariItem ? 'jari' : 'cloth'),
                               yarnQuantity: isYarnItem ? (item.yarnQuantity || item.quantity) : undefined,
                               amount: item.amount || totalVal - (item.cgst || 0) - (item.sgst || 0),
                               cgst: item.cgst,
@@ -827,14 +829,17 @@ export default function Inventory() {
                     onChange={(e) => {
                       const suppId = e.target.value;
                       const { cgstPercent, sgstPercent } = getGSTPercentInline(suppId);
-                      const isYarn = formData.rawMaterialType === 'yarn';
+                      const isGST = (formData.gstType || 'GST') === 'GST';
                       let nextCgst = formData.cgst;
                       let nextSgst = formData.sgst;
 
-                      if (isYarn) {
+                      if (isGST) {
                         const amt = formData.amount || 0;
                         nextCgst = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
                         nextSgst = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                      } else {
+                        nextCgst = 0;
+                        nextSgst = 0;
                       }
 
                       setFormData({
@@ -867,7 +872,16 @@ export default function Inventory() {
                   <div className="flex gap-4">
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, rawMaterialType: 'cloth' })}
+                      onClick={() => {
+                        const isYarn = formData.rawMaterialType === 'yarn';
+                        const needDefault = isYarn || !formData.fabricType;
+                        setFormData({ 
+                          ...formData, 
+                          rawMaterialType: 'cloth',
+                          fabricType: needDefault ? (products[0]?.description || '') : formData.fabricType,
+                          productGroupName: needDefault ? (products[0]?.productGroupName || '') : formData.productGroupName
+                        });
+                      }}
                       className={cn(
                         "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm font-bold text-sm",
                         (formData.rawMaterialType || 'cloth') === 'cloth'
@@ -875,6 +889,11 @@ export default function Inventory() {
                           : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent border"
                       )}
                     >
+                      <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0 mr-1">
+                        {(formData.rawMaterialType || 'cloth') === 'cloth' && (
+                          <span className="w-2 h-2 rounded-full bg-current" />
+                        )}
+                      </span>
                       Cloth
                     </button>
                     <button
@@ -898,7 +917,44 @@ export default function Inventory() {
                           : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent border"
                       )}
                     >
+                      <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0 mr-1">
+                        {formData.rawMaterialType === 'yarn' && (
+                          <span className="w-2 h-2 rounded-full bg-current" />
+                        )}
+                      </span>
                       Yarn
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const { cgstPercent, sgstPercent } = getGSTPercentInline(formData.supplierId);
+                        const amt = formData.amount || 0;
+                        const calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                        const calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                        const isYarn = formData.rawMaterialType === 'yarn';
+                        const needDefault = isYarn || !formData.fabricType;
+                        setFormData({ 
+                          ...formData, 
+                          rawMaterialType: 'jari',
+                          fabricType: needDefault ? (products[0]?.description || '') : formData.fabricType,
+                          productGroupName: needDefault ? (products[0]?.productGroupName || '') : formData.productGroupName,
+                          cgst: calculatedCGST,
+                          sgst: calculatedSGST
+                        });
+                      }}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm font-bold text-sm",
+                        formData.rawMaterialType === 'jari'
+                          ? "bg-indigo-600 text-white border-indigo-600" 
+                          : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent border"
+                      )}
+                    >
+                      <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0 mr-1">
+                        {formData.rawMaterialType === 'jari' && (
+                          <span className="w-2 h-2 rounded-full bg-current" />
+                        )}
+                      </span>
+                      Jari
                     </button>
                   </div>
                 </div>
@@ -910,7 +966,7 @@ export default function Inventory() {
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 mr-1">Payment Mode</label>
                       <div className="flex gap-4">
                         <label className={cn(
-                          "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
+                          "flex-1 flex items-center justify-center gap-2.5 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
                           (formData.paymentType || 'Cash') === 'Cash' 
                             ? "bg-slate-900 text-white border-slate-900" 
                             : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent border"
@@ -923,10 +979,15 @@ export default function Inventory() {
                             onChange={() => setFormData({ ...formData, paymentType: 'Cash' })}
                             className="sr-only"
                           />
+                          <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0 mr-1">
+                            {(formData.paymentType || 'Cash') === 'Cash' && (
+                              <span className="w-2 h-2 rounded-full bg-current" />
+                            )}
+                          </span>
                           <span className="text-sm font-bold">Cash</span>
                         </label>
                         <label className={cn(
-                          "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
+                          "flex-1 flex items-center justify-center gap-2.5 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
                           formData.paymentType === 'Credit' 
                             ? "bg-indigo-600 text-white border-indigo-600" 
                             : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent border"
@@ -939,13 +1000,20 @@ export default function Inventory() {
                             onChange={() => setFormData({ ...formData, paymentType: 'Credit' })}
                             className="sr-only"
                           />
+                          <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0 mr-1">
+                            {formData.paymentType === 'Credit' && (
+                              <span className="w-2 h-2 rounded-full bg-current" />
+                            )}
+                          </span>
                           <span className="text-sm font-bold">Credit</span>
                         </label>
                       </div>
                     </div>
 
                     <div className="space-y-2 animate-in fade-in duration-200">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Yarn Quantity (KGs)</label>
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                        Yarn Quantity (KGs)
+                      </label>
                       <input 
                         required
                         type="number" 
@@ -1159,7 +1227,7 @@ export default function Inventory() {
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Mode</label>
                       <div className="flex gap-4">
                         <label className={cn(
-                          "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
+                          "flex-1 flex items-center justify-center gap-2.5 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
                           (formData.paymentType || 'Cash') === 'Cash' 
                             ? "bg-slate-900 text-white border-slate-900" 
                             : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent border"
@@ -1172,10 +1240,15 @@ export default function Inventory() {
                             onChange={() => setFormData({ ...formData, paymentType: 'Cash' })}
                             className="sr-only"
                           />
+                          <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0 mr-1">
+                            {(formData.paymentType || 'Cash') === 'Cash' && (
+                              <span className="w-2 h-2 rounded-full bg-current" />
+                            )}
+                          </span>
                           <span className="text-sm font-bold">Cash</span>
                         </label>
                         <label className={cn(
-                          "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
+                          "flex-1 flex items-center justify-center gap-2.5 rounded-2xl py-4 px-5 cursor-pointer transition-all border shadow-sm",
                           formData.paymentType === 'Credit' 
                             ? "bg-indigo-600 text-white border-indigo-600" 
                             : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-transparent border"
@@ -1188,6 +1261,11 @@ export default function Inventory() {
                             onChange={() => setFormData({ ...formData, paymentType: 'Credit' })}
                             className="sr-only"
                           />
+                          <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0 mr-1">
+                            {formData.paymentType === 'Credit' && (
+                              <span className="w-2 h-2 rounded-full bg-current" />
+                            )}
+                          </span>
                           <span className="text-sm font-bold">Credit</span>
                         </label>
                       </div>
@@ -1241,7 +1319,9 @@ export default function Inventory() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Quantity</label>
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                        {formData.rawMaterialType === 'jari' ? 'Jari Quantity (KGs)' : 'Quantity'}
+                      </label>
                       <input 
                         required
                         type="number" 

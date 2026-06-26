@@ -81,6 +81,13 @@ export interface TransportMaster {
   createdAt: string;
 }
 
+export interface StyleMaster {
+  id: string;
+  name: string;
+  code: string;
+  createdAt: string;
+}
+
 export interface CustomerMaster {
   id: string;
   name: string;
@@ -96,14 +103,8 @@ export interface CustomerMaster {
   createdAt: string;
 }
 
-export interface StyleMaster {
-  id: string;
-  name: string;
-  createdAt: string;
-}
-
 export default function ProductMaster() {
-  const [activeTab, setActiveTab] = useState<'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'style'>('models');
+  const [activeTab, setActiveTab] = useState<'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'styles'>('models');
   const [products, setProducts] = useState<ProductModel[]>([]);
   const [units, setUnits] = useState<ProductionUnitMaster[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierMaster[]>([]);
@@ -309,9 +310,8 @@ export default function ProductMaster() {
       } catch (e) { console.error(e); }
     } else {
       const demoStyles: StyleMaster[] = [
-        { id: 'STY-001', name: 'NIGHTY SINGLE COLLAR', createdAt: new Date().toISOString() },
-        { id: 'STY-002', name: 'NIGHTY DOUBLE COLLAR', createdAt: new Date().toISOString() },
-        { id: 'STY-003', name: 'A-LINE STYLE', createdAt: new Date().toISOString() }
+        { id: 'ST-001', name: 'A-LINE KNIT', code: 'ALN-KT', createdAt: new Date().toISOString() },
+        { id: 'ST-002', name: 'ROUND NECK COMFORT', code: 'RND-CMF', createdAt: new Date().toISOString() }
       ];
       setStyles(demoStyles);
       localStorage.setItem('inven_style_master', JSON.stringify(demoStyles));
@@ -689,24 +689,30 @@ export default function ProductMaster() {
         };
         saveTransports([newTransport, ...transports]);
       }
-    } else if (activeTab === 'style') {
-      const updatedData = {
-        name: (styleFormData.name || '').toUpperCase().trim()
+    } else if (activeTab === 'styles') {
+      const styleData = {
+        ...styleFormData,
+        name: (styleFormData.name || '').toUpperCase().trim(),
+        code: (styleFormData.code || '').toUpperCase().trim()
       };
       if (editingId) {
-        const updated = styles.map(s => s.id === editingId ? { ...s, ...updatedData } : s);
+        const updated = styles.map(s => s.id === editingId ? { ...s, ...styleData as StyleMaster } : s);
         saveStyles(updated);
       } else {
         let generatedId = '';
         let exists = true;
+        let nextId = styles.length + 1;
         while (exists) {
-          generatedId = `STY-${Math.floor(100 + Math.random() * 900)}`;
+          generatedId = `ST-${nextId.toString().padStart(3, '0')}`;
           exists = styles.some(s => s && s.id === generatedId);
+          if (exists) {
+            nextId++;
+          }
         }
 
         const newStyle: StyleMaster = {
+          ...styleData as StyleMaster,
           id: generatedId,
-          name: updatedData.name,
           createdAt: new Date().toISOString(),
         };
         saveStyles([newStyle, ...styles]);
@@ -750,10 +756,10 @@ export default function ProductMaster() {
       saveCustomers(customers.filter(c => c.id !== id));
     } else if (activeTab === 'transports') {
       saveTransports(transports.filter(t => t.id !== id));
-    } else if (activeTab === 'style') {
-      saveStyles(styles.filter(s => s.id !== id));
     } else if (activeTab === 'income') {
       saveIncomes(incomes.filter(b => b.id !== id));
+    } else if (activeTab === 'styles') {
+      saveStyles(styles.filter(s => s.id !== id));
     } else {
       saveExpenses(expenses.filter(e => e.id !== id));
     }
@@ -772,10 +778,10 @@ export default function ProductMaster() {
           ? customers.filter(c => c && ((c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (c.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
           : activeTab === 'transports'
             ? transports.filter(t => t && ((t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (t.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
-            : activeTab === 'style'
-              ? styles.filter(s => s && ((s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
-              : activeTab === 'income'
-                ? incomes.filter(b => b && ((b.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (b.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
+            : activeTab === 'income'
+              ? incomes.filter(b => b && ((b.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (b.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
+              : activeTab === 'styles'
+                ? styles.filter(s => s && ((s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.id || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.code || '').toLowerCase().includes(searchQuery.toLowerCase())))
                 : expenses.filter(e => e && ((e.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.id || '').toLowerCase().includes(searchQuery.toLowerCase())));
 
   return (
@@ -790,11 +796,11 @@ export default function ProductMaster() {
           className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
         >
           <Plus className="w-4 h-4" />
-          Add {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'style' ? 'Style' : activeTab === 'income' ? 'Income Category' : 'Expense'}
+          Add {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'income' ? 'Income Category' : activeTab === 'styles' ? 'Style' : 'Expense'}
         </button>
       </div>
 
-      <div className="flex gap-2 p-1 bg-slate-100 w-fit rounded-2xl flex-wrap">
+      <div className="flex gap-2 p-1 bg-slate-100 w-fit rounded-2xl">
         <button 
           onClick={() => { setActiveTab('models'); setSearchQuery(''); }}
           className={cn(
@@ -803,6 +809,15 @@ export default function ProductMaster() {
           )}
         >
           Product Models
+        </button>
+        <button 
+          onClick={() => { setActiveTab('styles'); setSearchQuery(''); }}
+          className={cn(
+            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+            activeTab === 'styles' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Styles
         </button>
         <button 
           onClick={() => { setActiveTab('units'); setSearchQuery(''); }}
@@ -839,15 +854,6 @@ export default function ProductMaster() {
           )}
         >
           Transports
-        </button>
-        <button 
-          onClick={() => { setActiveTab('style'); setSearchQuery(''); }}
-          className={cn(
-            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-            activeTab === 'style' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          )}
-        >
-          Style
         </button>
       </div>
 
@@ -919,6 +925,42 @@ export default function ProductMaster() {
                   </p>
                 </div>
               )}
+            </div>
+          ))
+        ) : activeTab === 'styles' ? (
+          (filteredItems as StyleMaster[]).filter(s => s && s.name).map((style) => (
+            <div key={style.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                 <div className="flex gap-1">
+                    <button 
+                      onClick={() => { setEditingId(style.id); setStyleFormData(style); setIsFormOpen(true); }}
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => deleteItem(style.id, style.name)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                 </div>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shrink-0 mt-1">
+                  <Tag className="w-6 h-6" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{style.id}</p>
+                  <h4 className="text-lg font-bold text-slate-800 uppercase truncate" title={style.name}>{style.name}</h4>
+                  {style.code && (
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                      <div className="flex flex-col bg-slate-50 px-3 py-1 rounded-xl border border-slate-100">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Style Code</span>
+                        <span className="text-xs font-extrabold text-slate-700 uppercase leading-normal tracking-wide">{style.code}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           ))
         ) : activeTab === 'units' ? (
@@ -1136,34 +1178,6 @@ export default function ProductMaster() {
               </div>
             </div>
           ))
-        ) : activeTab === 'style' ? (
-          (filteredItems as StyleMaster[]).filter(s => s && s.name).map((style) => (
-            <div key={style.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                 <div className="flex gap-1">
-                    <button 
-                      onClick={() => { setEditingId(style.id); setStyleFormData(style); setIsFormOpen(true); }}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => deleteItem(style.id, style.name)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                 </div>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shrink-0">
-                  <Tag className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{style.id}</p>
-                  <h4 className="text-lg font-bold text-slate-800 uppercase leading-snug">{style.name}</h4>
-                </div>
-              </div>
-            </div>
-          ))
         ) : activeTab === 'income' ? (
           (filteredItems as IncomeMaster[]).filter(b => b && b.name).map((income) => (
             <div key={income.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
@@ -1229,7 +1243,7 @@ export default function ProductMaster() {
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">
-                  {editingId ? 'Edit' : 'Add New'} {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'style' ? 'Style' : 'Expense Category'}
+                  {editingId ? 'Edit' : 'Add New'} {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'styles' ? 'Style' : 'Expense Category'}
                 </h3>
               </div>
               <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
@@ -1298,6 +1312,36 @@ export default function ProductMaster() {
                         setProductFormData({...productFormData, hsn: numericOnly});
                       }}
                       placeholder="E.G. 00005407"
+                    />
+                  </div>
+                </>
+              ) : activeTab === 'styles' ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                      Style Code <span className="text-rose-500">*</span>
+                    </label>
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm uppercase"
+                      value={styleFormData.code || ''}
+                      onChange={(e) => setStyleFormData({...styleFormData, code: e.target.value.toUpperCase()})}
+                      placeholder="E.G. ALN-KT"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                      Style Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input 
+                      required
+                      type="text" 
+                      className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm uppercase"
+                      value={styleFormData.name || ''}
+                      onChange={(e) => setStyleFormData({...styleFormData, name: e.target.value.toUpperCase()})}
+                      placeholder="E.G. A-LINE KNIT"
                     />
                   </div>
                 </>
@@ -1660,22 +1704,6 @@ export default function ProductMaster() {
                     </div>
                   </div>
                 </>
-              ) : activeTab === 'style' ? (
-                <>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Style Name</label>
-                      <input 
-                        required
-                        type="text" 
-                        placeholder=""
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm uppercase"
-                        value={styleFormData.name || ''}
-                        onChange={(e) => setStyleFormData({...styleFormData, name: e.target.value.toUpperCase()})}
-                      />
-                    </div>
-                  </div>
-                </>
               ) : activeTab === 'income' ? (
                 <>
                   <div className="space-y-4">
@@ -1701,7 +1729,7 @@ export default function ProductMaster() {
                         required
                         type="text" 
                         placeholder="e.g. Machine Maintenance"
-                        className="w-[#f8faff] w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
                         value={expenseFormData.name || ''}
                         onChange={(e) => setExpenseFormData({...expenseFormData, name: e.target.value})}
                       />
@@ -1722,7 +1750,7 @@ export default function ProductMaster() {
                   type="submit"
                   className="flex-1 px-6 py-4 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100"
                 >
-                  Save {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'style' ? 'Style' : 'Expense'}
+                  Save {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : 'Expense'}
                 </button>
               </div>
             </form>

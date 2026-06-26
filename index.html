@@ -4,6 +4,87 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
+    <script>
+      // Early robust fallback for localStorage and sessionStorage under sandbox/iframe restrictions
+      (function() {
+        var createMockStorage = function() {
+          var memoryStore = {};
+          return {
+            getItem: function(key) { return Object.prototype.hasOwnProperty.call(memoryStore, key) ? memoryStore[key] : null; },
+            setItem: function(key, value) { memoryStore[key] = String(value); },
+            removeItem: function(key) { delete memoryStore[key]; },
+            clear: function() { memoryStore = {}; },
+            key: function(index) { return Object.keys(memoryStore)[index] || null; },
+            get length() { return Object.keys(memoryStore).length; }
+          };
+        };
+
+        var checkStorage = function(type) {
+          try {
+            var s = window[type];
+            if (!s) return false;
+            var testKey = '__test_storage__';
+            s.setItem(testKey, testKey);
+            s.removeItem(testKey);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        };
+
+        var defineStorageFallback = function(type) {
+          var mock = createMockStorage();
+          try {
+            Object.defineProperty(Window.prototype, type, {
+              get: function() { return mock; },
+              set: function() {},
+              configurable: true
+            });
+          } catch (e1) {
+            try {
+              Object.defineProperty(window, type, {
+                value: mock,
+                writable: true,
+                configurable: true
+              });
+            } catch (e2) {
+              console.warn('Failed to define fallback for ' + type + ':', e2);
+            }
+          }
+        };
+
+        if (!checkStorage('localStorage')) {
+          defineStorageFallback('localStorage');
+        }
+        if (!checkStorage('sessionStorage')) {
+          defineStorageFallback('sessionStorage');
+        }
+      })();
+
+      // Early runtime safety error handlers to catch sandbox/cross-origin iFrame issues immediately
+      window.onerror = function (msg, url, line, col, error) {
+        var strMsg = String(msg || '').toLowerCase();
+        if (strMsg.includes('script error') || strMsg.includes('resizeobserver')) {
+          console.warn('Benign iframe/CORS message suppressed:', msg);
+          return true; // Prevents default browser handling
+        }
+        return false;
+      };
+      window.addEventListener('error', function (event) {
+        var msg = String(event && event.message || '').toLowerCase();
+        if (msg.includes('script error') || msg.includes('resizeobserver')) {
+          if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = String(event && event.reason || '').toLowerCase();
+        if (reason.includes('script error') || reason.includes('resizeobserver')) {
+          if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root"></div>

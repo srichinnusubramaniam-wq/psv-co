@@ -23,23 +23,27 @@ export default function Settings() {
   useEffect(() => {
     const settings = localStorage.getItem('inven_settings');
     if (settings) {
-      const parsed = JSON.parse(settings);
-      setSupplierPrefix(parsed.supplierPrefix || 'SUP');
-      setNextSupplierId(parsed.nextSupplierId || 1);
-      setModelPrefix(parsed.modelPrefix || 'MOD');
-      setNextModelId(parsed.nextModelId || 1);
-      setProdPrefix(parsed.prodPrefix || 'PRD');
-      setNextProdId(parsed.nextProdId || 1);
-      setPurchasePrefix(parsed.purchasePrefix || 'PUR');
-      
-      setNextPurchaseId(parsed.nextPurchaseId !== undefined && parsed.nextPurchaseId !== '' ? Number(parsed.nextPurchaseId) : 1);
-      setInvoicePrefix(parsed.invoicePrefix || 'GT');
-      setInvoiceYear(parsed.invoiceYear || '25-26');
-      setNextInvoiceId(parsed.nextInvoiceId || 1);
-      setCompanyName(parsed.companyName || 'GAYATHRI TEXTILES');
-      setCompanyAddress(parsed.companyAddress || 'No.25B, South Vaniyar Street, Near TDCC BANK, Thathiengarpet, Trichy, Tamil Nadu - 621214');
-      setCompanyLogo(parsed.companyLogo || '');
-      setLowStockThreshold(parsed.lowStockThreshold || 10);
+      try {
+        const parsed = JSON.parse(settings);
+        setSupplierPrefix(parsed.supplierPrefix || 'SUP');
+        setNextSupplierId(parsed.nextSupplierId || 1);
+        setModelPrefix(parsed.modelPrefix || 'MOD');
+        setNextModelId(parsed.nextModelId || 1);
+        setProdPrefix(parsed.prodPrefix || 'PRD');
+        setNextProdId(parsed.nextProdId || 1);
+        setPurchasePrefix(parsed.purchasePrefix || 'PUR');
+        
+        setNextPurchaseId(parsed.nextPurchaseId !== undefined && parsed.nextPurchaseId !== '' ? Number(parsed.nextPurchaseId) : 1);
+        setInvoicePrefix(parsed.invoicePrefix || 'GT');
+        setInvoiceYear(parsed.invoiceYear || '25-26');
+        setNextInvoiceId(parsed.nextInvoiceId || 1);
+        setCompanyName(parsed.companyName || 'GAYATHRI TEXTILES');
+        setCompanyAddress(parsed.companyAddress || 'No.25B, South Vaniyar Street, Near TDCC BANK, Thathiengarpet, Trichy, Tamil Nadu - 621214');
+        setCompanyLogo(parsed.companyLogo || '');
+        setLowStockThreshold(parsed.lowStockThreshold || 10);
+      } catch (e) {
+        console.error('Error parsing settings:', e);
+      }
     }
   }, []);
 

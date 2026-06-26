@@ -130,9 +130,16 @@ export default function Customers() {
     setSelectedCustomer(customer);
     const allAssignments = localStorage.getItem('inven_production');
     if (allAssignments) {
-      const parsed = JSON.parse(allAssignments);
-      const filtered = parsed.filter((a: any) => a.customerId === customer.id && a.status === 'Finished Goods');
-      setFinishedGoods(filtered);
+      try {
+        const parsed = JSON.parse(allAssignments);
+        const filtered = parsed.filter((a: any) => a.customerId === customer.id && a.status === 'Finished Goods');
+        setFinishedGoods(filtered);
+      } catch (e) {
+        console.error('Error loading detailed customer assignments:', e);
+        setFinishedGoods([]);
+      }
+    } else {
+      setFinishedGoods([]);
     }
   };
 
