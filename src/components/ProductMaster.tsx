@@ -84,7 +84,6 @@ export interface TransportMaster {
 export interface StyleMaster {
   id: string;
   name: string;
-  code: string;
   createdAt: string;
 }
 
@@ -310,8 +309,8 @@ export default function ProductMaster() {
       } catch (e) { console.error(e); }
     } else {
       const demoStyles: StyleMaster[] = [
-        { id: 'ST-001', name: 'A-LINE KNIT', code: 'ALN-KT', createdAt: new Date().toISOString() },
-        { id: 'ST-002', name: 'ROUND NECK COMFORT', code: 'RND-CMF', createdAt: new Date().toISOString() }
+        { id: 'ST-001', name: 'A-LINE KNIT', createdAt: new Date().toISOString() },
+        { id: 'ST-002', name: 'ROUND NECK COMFORT', createdAt: new Date().toISOString() }
       ];
       setStyles(demoStyles);
       localStorage.setItem('inven_style_master', JSON.stringify(demoStyles));
@@ -692,8 +691,7 @@ export default function ProductMaster() {
     } else if (activeTab === 'styles') {
       const styleData = {
         ...styleFormData,
-        name: (styleFormData.name || '').toUpperCase().trim(),
-        code: (styleFormData.code || '').toUpperCase().trim()
+        name: (styleFormData.name || '').toUpperCase().trim()
       };
       if (editingId) {
         const updated = styles.map(s => s.id === editingId ? { ...s, ...styleData as StyleMaster } : s);
@@ -781,7 +779,7 @@ export default function ProductMaster() {
             : activeTab === 'income'
               ? incomes.filter(b => b && ((b.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (b.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
               : activeTab === 'styles'
-                ? styles.filter(s => s && ((s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.id || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.code || '').toLowerCase().includes(searchQuery.toLowerCase())))
+                ? styles.filter(s => s && ((s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (s.id || '').toLowerCase().includes(searchQuery.toLowerCase())))
                 : expenses.filter(e => e && ((e.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.id || '').toLowerCase().includes(searchQuery.toLowerCase())));
 
   return (
@@ -951,14 +949,6 @@ export default function ProductMaster() {
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{style.id}</p>
                   <h4 className="text-lg font-bold text-slate-800 uppercase truncate" title={style.name}>{style.name}</h4>
-                  {style.code && (
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                      <div className="flex flex-col bg-slate-50 px-3 py-1 rounded-xl border border-slate-100">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Style Code</span>
-                        <span className="text-xs font-extrabold text-slate-700 uppercase leading-normal tracking-wide">{style.code}</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -1317,20 +1307,6 @@ export default function ProductMaster() {
                 </>
               ) : activeTab === 'styles' ? (
                 <>
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
-                      Style Code <span className="text-rose-500">*</span>
-                    </label>
-                    <input 
-                      required
-                      type="text" 
-                      className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm uppercase"
-                      value={styleFormData.code || ''}
-                      onChange={(e) => setStyleFormData({...styleFormData, code: e.target.value.toUpperCase()})}
-                      placeholder="E.G. ALN-KT"
-                    />
-                  </div>
-
                   <div className="space-y-2">
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
                       Style Name <span className="text-rose-500">*</span>
@@ -1750,7 +1726,7 @@ export default function ProductMaster() {
                   type="submit"
                   className="flex-1 px-6 py-4 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100"
                 >
-                  Save {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : 'Expense'}
+                  Save {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'styles' ? 'Style' : activeTab === 'income' ? 'Income Category' : 'Expense'}
                 </button>
               </div>
             </form>

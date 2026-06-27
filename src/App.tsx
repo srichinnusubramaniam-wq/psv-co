@@ -11,6 +11,7 @@ import Inventory from '@/src/components/Inventory';
 import ProductionUnits from '@/src/components/ProductionUnits';
 import ProductMaster from '@/src/components/ProductMaster';
 import Invoice from '@/src/components/Invoice';
+import Billing from '@/src/components/Billing';
 import Expenses from '@/src/components/Expenses';
 import Income from '@/src/components/Income';
 import Reports from '@/src/components/Reports';
@@ -55,6 +56,8 @@ export default function App() {
             onFormOpened={() => setOpenFormOnView(null)} 
           />
         );
+      case 'billing':
+        return <Billing />;
       case 'record expense':
         return (
           <Expenses 

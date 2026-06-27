@@ -14,8 +14,8 @@ export default function Settings() {
   const [invoicePrefix, setInvoicePrefix] = useState('GT');
   const [invoiceYear, setInvoiceYear] = useState('25-26');
   const [nextInvoiceId, setNextInvoiceId] = useState(1);
-  const [companyName, setCompanyName] = useState('GAYATHRI TEXTILES');
-  const [companyAddress, setCompanyAddress] = useState('No.25B, South Vaniyar Street, Near TDCC BANK, Thathiengarpet, Trichy, Tamil Nadu - 621214');
+  const [companyName, setCompanyName] = useState('P.S.V & CO');
+  const [companyAddress, setCompanyAddress] = useState('189/92, P.V.IYER STREET, NEAR SINGAMETHAI, AMMAPET MAIN ROAD, SALEM - 636001 TAMILNADU');
   const [companyLogo, setCompanyLogo] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
   const [isSaved, setIsSaved] = useState(false);
@@ -37,8 +37,8 @@ export default function Settings() {
         setInvoicePrefix(parsed.invoicePrefix || 'GT');
         setInvoiceYear(parsed.invoiceYear || '25-26');
         setNextInvoiceId(parsed.nextInvoiceId || 1);
-        setCompanyName(parsed.companyName || 'GAYATHRI TEXTILES');
-        setCompanyAddress(parsed.companyAddress || 'No.25B, South Vaniyar Street, Near TDCC BANK, Thathiengarpet, Trichy, Tamil Nadu - 621214');
+        setCompanyName(parsed.companyName || 'P.S.V & CO');
+        setCompanyAddress(parsed.companyAddress || '189/92, P.V.IYER STREET, NEAR SINGAMETHAI, AMMAPET MAIN ROAD, SALEM - 636001 TAMILNADU');
         setCompanyLogo(parsed.companyLogo || '');
         setLowStockThreshold(parsed.lowStockThreshold || 10);
       } catch (e) {

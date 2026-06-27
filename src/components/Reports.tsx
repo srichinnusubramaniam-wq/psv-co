@@ -118,6 +118,7 @@ export default function Reports() {
   const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [production, setProduction] = useState<ProductionAssignment[]>([]);
+  const [companyName, setCompanyName] = useState('P.S.V & CO');
 
   // Reload data from localstorage
   const loadData = () => {
@@ -127,6 +128,10 @@ export default function Reports() {
       setIncomes(JSON.parse(localStorage.getItem('inven_income_records') || '[]'));
       setInventory(JSON.parse(localStorage.getItem('inven_inventory') || '[]'));
       setProduction(JSON.parse(localStorage.getItem('inven_production') || '[]'));
+      const settings = JSON.parse(localStorage.getItem('inven_settings') || '{}');
+      if (settings.companyName) {
+        setCompanyName(settings.companyName);
+      }
     } catch (err) {
       console.error('Error loading reports data:', err);
     }
@@ -572,7 +577,7 @@ export default function Reports() {
       <div className="hidden print:block border-b-2 border-slate-900 pb-5 mb-8">
         <div className="flex justify-between items-end">
           <div>
-            <h1 className="text-3xl font-black text-slate-940 tracking-tight">GAYATHRI TEXTILES AUDIT LOG</h1>
+            <h1 className="text-3xl font-black text-slate-940 tracking-tight">{companyName.toUpperCase()} AUDIT LOG</h1>
             <p className="text-xs font-bold text-slate-500 uppercase mt-1 tracking-wider">
               Issued Report: <span className="text-slate-800">{selectedReport.toUpperCase()} LEDGER</span>
             </p>
