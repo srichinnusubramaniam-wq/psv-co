@@ -632,7 +632,7 @@ export default function ProductionUnits({
                     {statusFilter === 'Finished Goods' ? 'Godown & Product Details' : (statusFilter === 'Damage' ? 'Godown & Product Description' : 'Godown Route & Model')}
                   </th>
                   <th className="px-6 py-4">
-                    {statusFilter === 'Finished Goods' ? 'Quantity' : (statusFilter === 'Damage' ? 'Damage Qty' : 'Size & Qty')}
+                    {statusFilter === 'Finished Goods' ? 'Quantity' : (statusFilter === 'Damage' ? 'Damage Qty' : 'Quantity')}
                   </th>
                   <th className="px-6 py-4">
                     {statusFilter === 'Finished Goods' ? 'Receipt Date' : (statusFilter === 'Damage' ? 'Damage Date' : 'Transfer Date')}
@@ -652,7 +652,7 @@ export default function ProductionUnits({
                       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                         <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                          {statusFilter === 'Finished Goods' ? `Godown: ${item.unit}` : (statusFilter === 'Damage' ? `Godown: ${item.unit}` : `From: ${item.unit}${item.toGodown ? ` → To: ${item.toGodown}` : ''}${item.customerId && ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}`}`)}
+                          {statusFilter === 'Finished Goods' ? `Godown: ${item.unit}` : (statusFilter === 'Damage' ? `Godown: ${item.unit}` : `From: ${item.unit}${item.toGodown ? ` → To: ${item.toGodown}` : ''}${item.customerId ? ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}` : ''}`)}
                         </p>
                         {item.productGroupName && (
                           <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded uppercase tracking-wider">
@@ -663,9 +663,6 @@ export default function ProductionUnits({
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
-                        {statusFilter !== 'Finished Goods' && statusFilter !== 'Damage' && (
-                          <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-bold text-slate-600 tracking-tighter">SIZE {item.size}</span>
-                        )}
                         <p className="text-sm font-bold text-slate-800">
                           {statusFilter === 'Finished Goods' ? (
                             `${item.quantity} pcs`
@@ -707,36 +704,6 @@ export default function ProductionUnits({
                             {statusFilter === 'Finished Goods' ? 'Receipt Date' : (statusFilter === 'Damage' ? 'Damage Date' : 'Transfer Date')}
                           </p>
                         </div>
-                        {statusFilter !== 'Damage' && (() => {
-                          if (item.status === 'Finished Goods') return null;
-                          const today = new Date();
-                          today.setHours(0, 0, 0, 0);
-                          const expected = new Date(item.expectedDate);
-                          expected.setHours(0, 0, 0, 0);
-                          const diffTime = expected.getTime() - today.getTime();
-                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                          
-                          if (diffDays <= 2 && diffDays >= 0) {
-                            return (
-                              <div className="relative group/alert">
-                                <AlertCircle className="w-4 h-4 text-rose-500 animate-pulse" />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover/alert:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10 shadow-xl">
-                                  Due in {diffDays} day{diffDays !== 1 ? 's' : ''}!
-                                </div>
-                              </div>
-                            );
-                          } else if (diffDays < 0) {
-                            return (
-                              <div className="relative group/alert">
-                                <AlertCircle className="w-4 h-4 text-rose-600" />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-rose-600 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover/alert:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10 shadow-xl">
-                                  Overdue!
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
                       </div>
                     </td>
                     <td className="px-6 py-5 text-right">

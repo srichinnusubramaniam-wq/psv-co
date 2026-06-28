@@ -19,7 +19,7 @@ import Settings from '@/src/components/Settings';
 import { Plus, X, FileText, Receipt, Factory } from 'lucide-react';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState('purchase');
   const [openFormOnView, setOpenFormOnView] = useState<string | null>(null);
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -30,6 +30,20 @@ export default function App() {
     };
     window.addEventListener('inven_localstorage_sync', handleSync);
     return () => window.removeEventListener('inven_localstorage_sync', handleSync);
+  }, []);
+
+  // Prevent mouse wheel scrolling from changing values of focused number inputs globally
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl.tagName === 'INPUT' && (activeEl as HTMLInputElement).type === 'number') {
+        (activeEl as HTMLInputElement).blur();
+      }
+    };
+    document.addEventListener('wheel', handleWheel, { passive: true });
+    return () => {
+      document.removeEventListener('wheel', handleWheel);
+    };
   }, []);
 
   const renderView = () => {

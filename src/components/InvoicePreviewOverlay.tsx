@@ -45,6 +45,7 @@ const EditableInvoiceField = ({
             type={type}
             value={value === undefined || value === null ? '' : value}
             onChange={(e) => onChange(e.target.value)}
+            onWheel={(e) => type === 'number' && e.currentTarget.blur()}
             placeholder={placeholder}
             className={cn(
               "w-full bg-slate-50/50 hover:bg-slate-100/80 focus:bg-white border-b border-dashed border-slate-300 rounded px-1 py-0.5 text-sm font-bold text-slate-800 outline-none transition-all focus:ring-1 focus:ring-indigo-500/30 focus:border-indigo-500",
@@ -110,6 +111,20 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
   setPreviewInvoice,
   finalizeInvoice
 }) => {
+  const isTamilNadu = (() => {
+    if (previewInvoice.buyer?.gstin && previewInvoice.buyer.gstin.trim().length >= 2) {
+      const stateCode = previewInvoice.buyer.gstin.trim().substring(0, 2);
+      if (/^\d+$/.test(stateCode)) {
+        return stateCode === '33';
+      }
+    }
+    if (previewInvoice.buyer?.address) {
+      const addrUpper = previewInvoice.buyer.address.toUpperCase();
+      return addrUpper.includes('TAMIL') || addrUpper.includes('TN') || addrUpper.includes('33');
+    }
+    return true; // default to local state
+  })();
+
   return (
     <div className="fixed inset-0 z-[200] flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
       <div className="bg-white w-full max-w-[850px] shadow-2xl rounded-[10px] overflow-hidden my-8 invoice-print-container">
@@ -394,13 +409,8 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                         />
                       </td>
                       
-                      <td className="p-1 border-r-[1.5px] border-slate-800 text-center">
-                        <EditableInvoiceSelect
-                          value={item.unit || 'Pcs'}
-                          onChange={(val) => updatePreviewItem(idx, 'unit', val)}
-                          options={['Pcs', 'Mtrs', 'Bags', 'Boxes']}
-                          className="text-center font-bold text-[11px] bg-transparent p-0 border-none h-auto outline-none"
-                        />
+                      <td className="p-1 border-r-[1.5px] border-slate-800 text-center font-bold text-[11px] text-slate-800">
+                        Pcs
                       </td>
                       
                       <td className="p-1 border-r-[1.5px] border-slate-800 text-right pr-2">
@@ -546,39 +556,65 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                     </div>
                   </div>
 
-                  {/* CGST */}
-                  <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
-                    <span className="flex items-center gap-1 font-bold">
-                      CGST @ (
-                      <EditableInvoiceSelect
-                        value={`${previewInvoice.cgstPercent !== undefined ? previewInvoice.cgstPercent : 2.5}%`}
-                        onChange={(val) => updatePreviewField('cgstPercent', parseFloat(val.replace('%', '')) || 0)}
-                        options={['0%', '1%', '2.5%', '5%', '6%', '9%', '12%', '14%', '18%']}
-                        className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
-                      />
-                      )
-                    </span>
-                    <span className="font-black text-right text-[11px]">
-                      {(previewInvoice.cgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
+                  {/* CGST & SGST (In State) */}
+                  {!previewInvoice.isNonGst && isTamilNadu && (
+                    <>
+                      {/* CGST */}
+                      <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
+                        <span className="flex items-center gap-1 font-bold">
+                          CGST @ (
+                          <EditableInvoiceSelect
+                            value={`${previewInvoice.cgstPercent !== undefined ? previewInvoice.cgstPercent : 2.5}%`}
+                            onChange={(val) => updatePreviewField('cgstPercent', parseFloat(val.replace('%', '')) || 0)}
+                            options={['0%', '1%', '2.5%', '5%', '6%', '9%', '12%', '14%', '18%']}
+                            className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
+                          />
+                          )
+                        </span>
+                        <span className="font-black text-right text-[11px]">
+                          {(previewInvoice.cgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
 
-                  {/* SGST */}
-                  <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
-                    <span className="flex items-center gap-1 font-bold">
-                      SGST @ (
-                      <EditableInvoiceSelect
-                        value={`${previewInvoice.sgstPercent !== undefined ? previewInvoice.sgstPercent : 2.5}%`}
-                        onChange={(val) => updatePreviewField('sgstPercent', parseFloat(val.replace('%', '')) || 0)}
-                        options={['0%', '1%', '2.5%', '5%', '6%', '9%', '12%', '14%', '18%']}
-                        className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
-                      />
-                      )
-                    </span>
-                    <span className="font-black text-right text-[11px]">
-                      {(previewInvoice.sgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
+                      {/* SGST */}
+                      <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
+                        <span className="flex items-center gap-1 font-bold">
+                          SGST @ (
+                          <EditableInvoiceSelect
+                            value={`${previewInvoice.sgstPercent !== undefined ? previewInvoice.sgstPercent : 2.5}%`}
+                            onChange={(val) => updatePreviewField('sgstPercent', parseFloat(val.replace('%', '')) || 0)}
+                            options={['0%', '1%', '2.5%', '5%', '6%', '9%', '12%', '14%', '18%']}
+                            className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
+                          />
+                          )
+                        </span>
+                        <span className="font-black text-right text-[11px]">
+                          {(previewInvoice.sgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* IGST (Interstate) */}
+                  {!previewInvoice.isNonGst && !isTamilNadu && (
+                    <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
+                      <span className="flex items-center gap-1 font-bold">
+                        IGST @ (
+                        <EditableInvoiceSelect
+                          value={`${previewInvoice.igstPercent !== undefined ? previewInvoice.igstPercent : 5.0}%`}
+                          onChange={(val) => updatePreviewField('igstPercent', parseFloat(val.replace('%', '')) || 0)}
+                          options={['0%', '2%', '5%', '12%', '18%', '28%']}
+                          className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
+                        />
+                        )
+                      </span>
+                      <span className="font-black text-right text-[11px]">
+                        {(previewInvoice.igst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+
 
                   {/* Round Off */}
                   <div className="grid grid-cols-[1fr_100px] items-center text-slate-800 border-t border-dashed border-slate-200 pt-1.5">

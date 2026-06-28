@@ -134,7 +134,7 @@ export default function Settings() {
                     />
                   </div>
                   {!companyLogo && (
-                    <label htmlFor="logo-upload" className="inline-block px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold cursor-pointer hover:bg-indigo-100 transition-colors">
+                    <label htmlFor="logo-upload" className="inline-block px-4 py-2 bg-indigo-150 text-indigo-600 rounded-xl text-xs font-bold cursor-pointer hover:bg-indigo-100 transition-colors">
                       Upload Company Logo
                     </label>
                   )}

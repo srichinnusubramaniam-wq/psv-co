@@ -99,6 +99,8 @@ interface GeneratedInvoice {
   packingCharges?: number;
   cgstPercent?: number;
   sgstPercent?: number;
+  igstPercent?: number;
+  isNonGst?: boolean;
   bankName?: string;
   bankBranch?: string;
   bankAccNo?: string;
@@ -2396,7 +2398,10 @@ export default function Invoice({
                     <div className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl">
                       <p className="text-[10px] uppercase font-bold text-slate-400">Receivables Bal.</p>
                       <p className="text-xl font-black text-rose-600 mt-1">
-                        ₹{generatedInvoices.reduce((sum, i) => sum + Math.max(0, (Number(i.totalAmount) || 0) - (Number(i.paidAmount) || 0)), 0).toLocaleString()}
+                        ₹{(
+                          generatedInvoices.reduce((sum, i) => sum + Math.max(0, (Number(i.totalAmount) || 0) - (Number(i.paidAmount) || 0)), 0) +
+                          customers.reduce((sum, c) => sum + (Number(c.openingBalance) || 0), 0)
+                        ).toLocaleString()}
                       </p>
                     </div>
                   </div>

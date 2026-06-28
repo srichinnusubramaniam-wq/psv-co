@@ -99,6 +99,7 @@ export interface CustomerMaster {
   district?: string;
   gstNumber: string;
   tcsApplicable?: 'YES' | 'NO';
+  openingBalance?: number;
   createdAt: string;
 }
 
@@ -1062,6 +1063,9 @@ export default function ProductMaster() {
               <div className="space-y-4">
                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
                     <span className="text-slate-400">GST: {customer.gstNumber || 'N/A'}</span>
+                    {customer.openingBalance !== undefined && customer.openingBalance !== null && (
+                      <span className="text-slate-500 font-mono">OB: ₹{customer.openingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    )}
                  </div>
                  
                  <div className="space-y-2.5">
@@ -1562,6 +1566,17 @@ export default function ProductMaster() {
                         <option value="NO">NO</option>
                         <option value="YES">YES</option>
                       </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Opening Balance (₹)</label>
+                      <input 
+                        type="number" 
+                        step="any" onWheel={(e) => e.currentTarget.blur()}
+                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                        value={customerFormData.openingBalance !== undefined ? customerFormData.openingBalance : ''}
+                        onChange={(e) => setCustomerFormData({...customerFormData, openingBalance: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0})}
+                        placeholder="E.G. 5000"
+                      />
                     </div>
                   </div>
 

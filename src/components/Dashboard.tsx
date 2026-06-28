@@ -42,11 +42,12 @@ export default function Dashboard() {
   const totalRevenueVal = totalCollectedInvoices + totalOtherIncome;
 
   const totalDeliveredOrdersCount = invoices.length;
+  const totalOpeningBalance = customers.reduce((sum, c) => sum + (Number(c.openingBalance) || 0), 0);
   const outstandingDeliveredVal = invoices.reduce((sum, inv) => {
     const total = Number(inv.totalAmount) || 0;
     const paid = Number(inv.paidAmount) || 0;
     return sum + Math.max(0, total - paid);
-  }, 0);
+  }, 0) + totalOpeningBalance;
 
   const totalExpensesVal = expenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0);
   const customerCountVal = customers.length;

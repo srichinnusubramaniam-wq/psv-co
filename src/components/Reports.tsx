@@ -118,6 +118,7 @@ export default function Reports() {
   const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [production, setProduction] = useState<ProductionAssignment[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [companyName, setCompanyName] = useState('P.S.V & CO');
 
   // Reload data from localstorage
@@ -128,6 +129,7 @@ export default function Reports() {
       setIncomes(JSON.parse(localStorage.getItem('inven_income_records') || '[]'));
       setInventory(JSON.parse(localStorage.getItem('inven_inventory') || '[]'));
       setProduction(JSON.parse(localStorage.getItem('inven_production') || '[]'));
+      setCustomers(JSON.parse(localStorage.getItem('inven_customers') || '[]'));
       const settings = JSON.parse(localStorage.getItem('inven_settings') || '{}');
       if (settings.companyName) {
         setCompanyName(settings.companyName);
@@ -214,6 +216,8 @@ export default function Reports() {
       return matchRange && matchSearch;
     });
 
+    const totalOpeningBalance = customers.reduce((sum, c) => sum + (Number(c.openingBalance) || 0), 0);
+
     const summary = filtered.reduce((acc, inv) => {
       const total = Number(inv.totalAmount) || 0;
       const paid = Number(inv.paidAmount) || 0;
@@ -238,7 +242,7 @@ export default function Reports() {
     }, {
       totalSales: 0,
       totalCollected: 0,
-      totalReceivable: 0,
+      totalReceivable: totalOpeningBalance,
       totalTax: 0,
       totalQtySold: 0,
       cashSalesCount: 0,
@@ -248,7 +252,7 @@ export default function Reports() {
     });
 
     return { items: filtered, summary };
-  }, [invoices, startDate, endDate, searchQuery]);
+  }, [invoices, startDate, endDate, searchQuery, customers]);
 
 
   // 2. Expenses Report Calculations

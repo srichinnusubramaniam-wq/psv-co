@@ -95,11 +95,13 @@ export default function AccountReceivable() {
   const totalDuesVal = useMemo(() => {
     try {
       const invoices = JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]');
+      const customers = JSON.parse(localStorage.getItem('inven_customers') || '[]');
+      const totalOpeningBalance = customers.reduce((sum: number, c: any) => sum + (Number(c.openingBalance) || 0), 0);
       return invoices.reduce((sum: number, inv: any) => {
         const total = Number(inv.totalAmount) || 0;
         const paid = Number(inv.paidAmount) || 0;
         return sum + Math.max(0, total - paid);
-      }, 0);
+      }, 0) + totalOpeningBalance;
     } catch {
       return 175000;
     }

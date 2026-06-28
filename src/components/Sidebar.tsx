@@ -1,6 +1,5 @@
 import React from 'react';
 import { 
-  LayoutDashboard, 
   Package, 
   FileText, 
   BarChart3, 
@@ -15,11 +14,9 @@ import {
 import { cn } from '@/src/lib/utils';
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', active: true },
   { icon: Package, label: 'Purchase' },
   { icon: Factory, label: 'Godown Transfer' },
   { icon: Tag, label: 'Master' },
-  { icon: FileText, label: 'Invoice' },
   { icon: Receipt, label: 'Billing' },
   { icon: BarChart3, label: 'Reports' },
   { icon: Settings, label: 'Settings' },

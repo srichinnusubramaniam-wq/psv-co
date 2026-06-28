@@ -29,6 +29,7 @@ export interface Customer {
   district?: string;
   gstNumber?: string;
   tcsApplicable?: 'YES' | 'NO';
+  openingBalance?: number;
   createdAt: string;
 }
 
@@ -196,8 +197,11 @@ export default function Customers() {
                   <div className="flex items-center gap-3 text-sm text-slate-600 font-medium">
                      <Phone className="w-4 h-4 text-emerald-500 shrink-0" />
                      {customer.mobileNumber || customer.phone}
+                     {customer.openingBalance !== undefined && customer.openingBalance !== null && (
+                       <span className="bg-slate-100 text-slate-700 text-[10px] font-mono font-bold px-2 py-0.5 rounded ml-auto">OB: ₹{customer.openingBalance}</span>
+                     )}
                      {customer.tcsApplicable === 'YES' && (
-                       <span className="bg-rose-50 text-rose-600 text-[8px] font-black px-1.5 py-0.5 rounded ml-auto">TCS APPLICABLE</span>
+                       <span className={cn("bg-rose-50 text-rose-600 text-[8px] font-black px-1.5 py-0.5 rounded", customer.openingBalance === undefined ? "ml-auto" : "ml-2")}>TCS APPLICABLE</span>
                      )}
                   </div>
                   <div className="flex items-start gap-3 text-sm text-slate-600 font-medium">
@@ -325,6 +329,17 @@ export default function Customers() {
                      <option value="NO">NO</option>
                      <option value="YES">YES</option>
                    </select>
+                 </div>
+                 <div className="space-y-2">
+                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Opening Balance (₹)</label>
+                   <input 
+                     type="number" 
+                     step="any" onWheel={(e) => e.currentTarget.blur()}
+                     className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                     value={formData.openingBalance !== undefined ? formData.openingBalance : ''}
+                     onChange={(e) => setFormData({...formData, openingBalance: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0})}
+                     placeholder="E.G. 5000"
+                   />
                  </div>
                </div>
 
@@ -477,6 +492,12 @@ export default function Customers() {
                           {selectedCustomer.tcsApplicable || 'NO'}
                         </span>
                       </div>
+                      {selectedCustomer.openingBalance !== undefined && selectedCustomer.openingBalance !== null && (
+                        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-200/40">
+                          <span className="text-slate-400">OPENING BALANCE</span>
+                          <span className="text-slate-700 font-mono font-bold">₹{selectedCustomer.openingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 

@@ -41,6 +41,7 @@ interface SaleRecord {
   createdAt: string;
   hsn?: string;
   unit?: string;
+  style?: string;
 }
 
 interface GeneratedInvoice {
@@ -84,6 +85,8 @@ interface GeneratedInvoice {
   packingCharges?: number;
   cgstPercent?: number;
   sgstPercent?: number;
+  igstPercent?: number;
+  isNonGst?: boolean;
   bankName?: string;
   bankBranch?: string;
   bankAccNo?: string;
@@ -133,6 +136,10 @@ export default function Billing() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Paid' | 'Unpaid' | 'Partially Paid'>('all');
   
+  // Custom Delete Confirm state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; invoiceNo: string } | null>(null);
+  
   // Data States
   const [invoices, setInvoices] = useState<GeneratedInvoice[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -140,12 +147,14 @@ export default function Billing() {
   const [transports, setTransports] = useState<any[]>([]);
   const [appSettings, setAppSettings] = useState<any>({});
   const [productionAssignments, setProductionAssignments] = useState<any[]>([]);
+  const [styles, setStyles] = useState<any[]>([]);
 
   // Active Billing Creator Form State
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [invoiceNo, setInvoiceNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [term, setTerm] = useState<'Credit' | 'Cash'>('Credit');
+  const [isNonGst, setIsNonGst] = useState<boolean>(false);
   
   const [buyerName, setBuyerName] = useState('');
   const [buyerAddress, setBuyerAddress] = useState('');
@@ -172,6 +181,44 @@ export default function Billing() {
   const [igstPercent, setIgstPercent] = useState<number>(0);
   const [roundOff, setRoundOff] = useState<number>(0);
 
+  // Auto-detect if customer is in Tamil Nadu
+  const isTamilNadu = useMemo(() => {
+    if (buyerGstin && buyerGstin.trim().length >= 2) {
+      const stateCode = buyerGstin.trim().substring(0, 2);
+      if (/^\d+$/.test(stateCode)) {
+        return stateCode === '33';
+      }
+    }
+    const found = customers.find(c => (c?.name || '').toUpperCase() === (buyerName || '').toUpperCase());
+    if (found && found.state) {
+      return found.state.toUpperCase().includes('TAMIL');
+    }
+    if (buyerAddress) {
+      const addrUpper = buyerAddress.toUpperCase();
+      return addrUpper.includes('TAMIL') || addrUpper.includes('TN') || addrUpper.includes('33');
+    }
+    return true; // default to local state
+  }, [buyerGstin, buyerName, buyerAddress, customers]);
+
+  // Synchronize tax percentages when isNonGst or isTamilNadu changes
+  useEffect(() => {
+    if (isNonGst) {
+      setCgstPercent(0);
+      setSgstPercent(0);
+      setIgstPercent(0);
+    } else {
+      if (isTamilNadu) {
+        setCgstPercent(2.5);
+        setSgstPercent(2.5);
+        setIgstPercent(0);
+      } else {
+        setCgstPercent(0);
+        setSgstPercent(0);
+        setIgstPercent(5.0);
+      }
+    }
+  }, [isNonGst, isTamilNadu]);
+
   // Overlay previewing modal
   const [previewInvoice, setPreviewInvoice] = useState<GeneratedInvoice | null>(null);
 
@@ -193,6 +240,15 @@ export default function Billing() {
       const savedTransports = JSON.parse(localStorage.getItem('inven_transports') || '[]');
       const settings = JSON.parse(localStorage.getItem('inven_settings') || '{}');
       const savedProduction = JSON.parse(localStorage.getItem('inven_production') || '[]');
+      
+      let savedStyles = JSON.parse(localStorage.getItem('inven_style_master') || '[]');
+      if (!savedStyles || savedStyles.length === 0) {
+        savedStyles = [
+          { id: 'ST-001', name: 'A-LINE KNIT', createdAt: new Date().toISOString() },
+          { id: 'ST-002', name: 'ROUND NECK COMFORT', createdAt: new Date().toISOString() }
+        ];
+        localStorage.setItem('inven_style_master', JSON.stringify(savedStyles));
+      }
 
       setInvoices(savedInvoices);
       setCustomers(savedCustomers);
@@ -200,6 +256,7 @@ export default function Billing() {
       setTransports(savedTransports);
       setAppSettings(settings);
       setProductionAssignments(savedProduction);
+      setStyles(savedStyles);
 
       // Initialize default values for creator form
       if (!editingInvoiceId) {
@@ -346,15 +403,32 @@ export default function Billing() {
   };
 
   // Helper to query available finished goods stock and group by godown
-  const getProductStockInfo = (modelNameLabel: string) => {
+  const getProductStockInfo = (modelNameLabel: string, ignoreInvoiceId?: string | null) => {
     const found = findProductByLabel(modelNameLabel);
     if (!found) return null;
 
     // Filter assignments that are 'Finished Goods' or 'Transfer' and match the master model name
     const matches = productionAssignments.filter(a => {
-      const isEligible = a.type === 'Finished Goods' || a.status === 'Finished Goods' || a.type === 'Transfer' || a.status === 'Transfer';
+      const type = a.type || 'Transfer';
+      const isEligible = type === 'Finished Goods' || a.status === 'Finished Goods' || type === 'Transfer' || a.status === 'Transfer';
       if (!isEligible) return false;
-      return a.modelName && (
+      
+      if (!a.modelName) return false;
+      
+      // Attempt robust product lookup for assignment's modelName
+      const assignmentProduct = findProductByLabel(a.modelName);
+      if (assignmentProduct) {
+        if (assignmentProduct.id && found.id) {
+          return assignmentProduct.id === found.id;
+        }
+        return (
+          (assignmentProduct.description || '').toUpperCase().trim() === (found.description || '').toUpperCase().trim() &&
+          (assignmentProduct.code || '').toUpperCase().trim() === (found.code || '').toUpperCase().trim() &&
+          (assignmentProduct.name || '').toUpperCase().trim() === (found.name || '').toUpperCase().trim()
+        );
+      }
+
+      return (
         doesStringMatchProduct(found, a.modelName) || 
         doesStringMatchProduct({ description: a.modelName, code: '', name: '' }, found.description) ||
         doesStringMatchProduct({ name: a.modelName, code: '', description: '' }, found.name)
@@ -370,7 +444,126 @@ export default function Billing() {
       totalQty += qty;
     });
 
+    // If we have an ignoreInvoiceId, let's find the existing invoice and add back its item quantities for accurate validation during editing
+    if (ignoreInvoiceId) {
+      try {
+        const savedInvoices = JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]');
+        const existingInv = savedInvoices.find((i: any) => i.id === ignoreInvoiceId);
+        if (existingInv && existingInv.items) {
+          existingInv.items.forEach((item: any) => {
+            if (item.modelName) {
+              const itemProduct = findProductByLabel(item.modelName);
+              if (itemProduct && found && itemProduct.id === found.id) {
+                const itemQty = Number(item.quantity) || 0;
+                totalQty += itemQty;
+                byGodown['Current Allocation'] = (byGodown['Current Allocation'] || 0) + itemQty;
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Error recovering allocated stock for edit preview', err);
+      }
+    }
+
     return { totalQty, byGodown };
+  };
+
+  // Helper to find matching production assignments for stock restoration and deduction
+  const findMatchingProductionAssignmentsForRestore = (modelNameLabel: string, assignmentsList: any[]) => {
+    const found = findProductByLabel(modelNameLabel);
+    if (!found) return [];
+
+    return assignmentsList.filter(a => {
+      const type = a.type || 'Transfer';
+      const isEligible = type === 'Finished Goods' || a.status === 'Finished Goods' || type === 'Transfer' || a.status === 'Transfer';
+      if (!isEligible) return false;
+      
+      if (!a.modelName) return false;
+      
+      const assignmentProduct = findProductByLabel(a.modelName);
+      if (assignmentProduct) {
+        if (assignmentProduct.id && found.id) {
+          return assignmentProduct.id === found.id;
+        }
+        return (
+          (assignmentProduct.description || '').toUpperCase().trim() === (found.description || '').toUpperCase().trim() &&
+          (assignmentProduct.code || '').toUpperCase().trim() === (found.code || '').toUpperCase().trim() &&
+          (assignmentProduct.name || '').toUpperCase().trim() === (found.name || '').toUpperCase().trim()
+        );
+      }
+
+      return (
+        doesStringMatchProduct(found, a.modelName) || 
+        doesStringMatchProduct({ description: a.modelName, code: '', name: '' }, found.description) ||
+        doesStringMatchProduct({ name: a.modelName, code: '', description: '' }, found.name)
+      );
+    });
+  };
+
+  // Main stock updater when invoices are saved, modified, or deleted
+  const updateStockForInvoice = (
+    oldInvoiceItems: SaleRecord[] | null, 
+    newInvoiceItems: SaleRecord[] | null
+  ) => {
+    try {
+      const savedProduction = JSON.parse(localStorage.getItem('inven_production') || '[]');
+      
+      // 1. Restore old stock levels (add back sold quantities from previously saved invoice)
+      if (oldInvoiceItems && oldInvoiceItems.length > 0) {
+        for (const oldItem of oldInvoiceItems) {
+          if (!oldItem.modelName) continue;
+          const qtyToRestore = Number(oldItem.quantity) || 0;
+          if (qtyToRestore <= 0) continue;
+
+          const matches = findMatchingProductionAssignmentsForRestore(oldItem.modelName, savedProduction);
+          if (matches.length > 0) {
+            // Sort to add back to the first match with available capacity, or simply add back to the first match
+            matches[0].quantity = (Number(matches[0].quantity) || 0) + qtyToRestore;
+          }
+        }
+      }
+
+      // 2. Deduct new stock levels (subtract sold quantities from newly generated invoice)
+      if (newInvoiceItems && newInvoiceItems.length > 0) {
+        for (const newItem of newInvoiceItems) {
+          if (!newItem.modelName) continue;
+          let qtyToDeduct = Number(newItem.quantity) || 0;
+          if (qtyToDeduct <= 0) continue;
+
+          const matches = findMatchingProductionAssignmentsForRestore(newItem.modelName, savedProduction);
+          // Sort matches chronologically (FIFO) based on assignedDate or assignedAt to consume oldest stock first
+          matches.sort((a, b) => {
+            const dateA = new Date(a.assignedDate || a.assignedAt || 0).getTime();
+            const dateB = new Date(b.assignedDate || b.assignedAt || 0).getTime();
+            return dateA - dateB;
+          });
+
+          for (const match of matches) {
+            const available = Number(match.quantity) || 0;
+            if (available >= qtyToDeduct) {
+              match.quantity = available - qtyToDeduct;
+              qtyToDeduct = 0;
+              break;
+            } else {
+              match.quantity = 0;
+              qtyToDeduct -= available;
+            }
+          }
+
+          // Fallback if sold quantity exceeds available capacity (validation should prevent this, but be safe)
+          if (qtyToDeduct > 0 && matches.length > 0) {
+            matches[0].quantity = (Number(matches[0].quantity) || 0) - qtyToDeduct;
+          }
+        }
+      }
+
+      // Save updated production assignments
+      localStorage.setItem('inven_production', JSON.stringify(savedProduction));
+      setProductionAssignments(savedProduction);
+    } catch (error) {
+      console.error('Error updating stock levels:', error);
+    }
   };
 
   // Add line item row
@@ -388,7 +581,8 @@ export default function Billing() {
       unitPrice: 0,
       createdAt: new Date().toISOString(),
       hsn: '52082910',
-      unit: 'Pcs'
+      unit: 'Pcs',
+      style: ''
     };
     setBillItems([...billItems, newItem]);
   };
@@ -404,11 +598,26 @@ export default function Billing() {
       if (idx === index) {
         const temp = { ...item, [key]: value };
         // Recalculate totalCost: Qty * Price - discountCost
-        if (key === 'quantity' || key === 'unitPrice' || key === 'discountCost') {
+        if (key === 'quantity' || key === 'unitPrice' || key === 'discountCost' || key === 'discountPercentage') {
           const qty = Number(key === 'quantity' ? value : temp.quantity) || 0;
           const price = Number(key === 'unitPrice' ? value : temp.unitPrice) || 0;
-          const disc = Number(key === 'discountCost' ? value : temp.discountCost) || 0;
-          temp.totalCost = Math.max(0, (qty * price) - disc);
+          let discCost = Number(key === 'discountCost' ? value : temp.discountCost) || 0;
+          let discPct = Number(key === 'discountPercentage' ? value : temp.discountPercentage) || 0;
+
+          if (key === 'discountPercentage') {
+            discCost = parseFloat(((qty * price) * (discPct / 100)).toFixed(2));
+            temp.discountCost = discCost;
+          } else if (key === 'discountCost') {
+            const base = qty * price;
+            discPct = base > 0 ? parseFloat(((discCost / base) * 100).toFixed(2)) : 0;
+            temp.discountPercentage = discPct;
+          } else {
+            // Recalculate discountCost if quantity or price changed
+            discCost = parseFloat(((qty * price) * (discPct / 100)).toFixed(2));
+            temp.discountCost = discCost;
+          }
+
+          temp.totalCost = Math.max(0, (qty * price) - discCost);
         }
         return temp;
       }
@@ -456,9 +665,9 @@ export default function Billing() {
     const taxableAmount = itemsTotal;
     const baseForGst = taxableAmount + packing;
 
-    const cgst = parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2));
-    const sgst = parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2));
-    const igst = parseFloat(((baseForGst * igstPercent) / 100).toFixed(2));
+    const cgst = (!isNonGst && isTamilNadu) ? parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2)) : 0;
+    const sgst = (!isNonGst && isTamilNadu) ? parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2)) : 0;
+    const igst = (!isNonGst && !isTamilNadu) ? parseFloat(((baseForGst * igstPercent) / 100).toFixed(2)) : 0;
     
     const totalAmount = Math.round(baseForGst + cgst + sgst + igst + Number(roundOff));
     const words = numberToWords(totalAmount);
@@ -472,7 +681,7 @@ export default function Billing() {
       totalAmount,
       amountInWords: words
     };
-  }, [billItems, packingCharges, cgstPercent, sgstPercent, igstPercent, roundOff]);
+  }, [billItems, packingCharges, cgstPercent, sgstPercent, igstPercent, roundOff, isTamilNadu, isNonGst]);
 
   // Construct current invoice object from form state
   const getInvoiceFromForm = (): GeneratedInvoice => {
@@ -516,6 +725,8 @@ export default function Billing() {
       packingCharges: Number(packingCharges),
       cgstPercent,
       sgstPercent,
+      igstPercent,
+      isNonGst,
       status: originalInvoice?.status || 'Unpaid',
       paidAmount: originalInvoice?.paidAmount || 0,
       companyName: appSettings.companyName || 'P.S.V & CO',
@@ -547,7 +758,7 @@ export default function Billing() {
     // Validate stock levels
     for (const item of invObj.items) {
       if (item.modelName) {
-        const stock = getProductStockInfo(item.modelName);
+        const stock = getProductStockInfo(item.modelName, editingInvoiceId);
         const totalStock = stock ? stock.totalQty : 0;
         if (Number(item.quantity) > totalStock) {
           showToast('error', `Insufficient stock! Entered quantity (${item.quantity}) exceeds available stock (${totalStock} pcs) for: "${item.modelName}".`);
@@ -556,12 +767,41 @@ export default function Billing() {
       }
     }
 
+    // Concatenate description column with style column
+    invObj.items = invObj.items.map(item => {
+      if (item.style) {
+        const suffix = ` - ${item.style}`;
+        if (!item.modelName.includes(suffix)) {
+          return {
+            ...item,
+            modelName: `${item.modelName}${suffix}`
+          };
+        }
+      }
+      return item;
+    });
+
     setPreviewInvoice(invObj);
   };
 
   // Save/Generate Bill direct to local storage
   const handleSaveBill = (forceInvoiceObj?: GeneratedInvoice) => {
-    const finalInvoice = forceInvoiceObj || getInvoiceFromForm();
+    let finalInvoice = forceInvoiceObj || getInvoiceFromForm();
+
+    if (!forceInvoiceObj) {
+      finalInvoice.items = finalInvoice.items.map(item => {
+        if (item.style) {
+          const suffix = ` - ${item.style}`;
+          if (!item.modelName.includes(suffix)) {
+            return {
+              ...item,
+              modelName: `${item.modelName}${suffix}`
+            };
+          }
+        }
+        return item;
+      });
+    }
 
     if (!finalInvoice.buyer.name) {
       showToast('error', 'Please select or enter a buyer name.');
@@ -575,7 +815,7 @@ export default function Billing() {
     // Validate stock levels
     for (const item of finalInvoice.items) {
       if (item.modelName) {
-        const stock = getProductStockInfo(item.modelName);
+        const stock = getProductStockInfo(item.modelName, editingInvoiceId);
         const totalStock = stock ? stock.totalQty : 0;
         if (Number(item.quantity) > totalStock) {
           showToast('error', `Insufficient stock! Entered quantity (${item.quantity}) exceeds available stock (${totalStock} pcs) for: "${item.modelName}".`);
@@ -591,6 +831,9 @@ export default function Billing() {
       const exists = savedInvoices.find((i: any) => i.id === finalInvoice.id);
 
       if (exists) {
+        // Update stock levels: restore old stock, then deduct new stock
+        updateStockForInvoice(exists.items, finalInvoice.items);
+
         // Edit / Modify flow
         updatedInvoices = savedInvoices.map((inv: any) => {
           if (inv.id === finalInvoice.id) {
@@ -606,6 +849,9 @@ export default function Billing() {
         });
         showToast('success', `Bill ${finalInvoice.invoiceNo} modified and updated successfully!`);
       } else {
+        // Update stock levels: deduct new stock
+        updateStockForInvoice(null, finalInvoice.items);
+
         // Create new flow
         updatedInvoices = [finalInvoice, ...savedInvoices];
         
@@ -660,12 +906,14 @@ export default function Billing() {
       unitPrice: 0,
       createdAt: new Date().toISOString(),
       hsn: '52082910',
-      unit: 'Pcs'
+      unit: 'Pcs',
+      style: ''
     };
     setBillItems([defaultItem]);
     setPackingCharges(0);
     setRoundOff(0);
     setIgstPercent(0);
+    setIsNonGst(false);
   };
 
   // Initialize form with existing invoice details for modification
@@ -681,6 +929,7 @@ export default function Billing() {
     }
     setInvoiceDate(formattedDate);
     setTerm(inv.term || 'Credit');
+    setIsNonGst(inv.isNonGst !== undefined ? inv.isNonGst : (inv.cgstPercent === 0 && inv.sgstPercent === 0));
     
     setBuyerName(inv.buyer?.name || '');
     setBuyerAddress(inv.buyer?.address || '');
@@ -714,6 +963,68 @@ export default function Billing() {
     showToast('success', `Loaded Bill ${inv.invoiceNo} for editing.`);
   };
 
+  const recalculateInvoiceTotals = (invoice: GeneratedInvoice): GeneratedInvoice => {
+    const itemsTotal = invoice.items.reduce((sum: number, item: any) => sum + (Number(item.totalCost) || 0), 0);
+    const totalQty = invoice.items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
+    const packing = Number(invoice.packingCharges) || 0;
+    const baseForGst = itemsTotal + packing;
+
+    const isNonGst = !!invoice.isNonGst;
+    
+    // Check if Tamil Nadu (either by explicit property or by GSTIN state code)
+    const isTamilNadu = (() => {
+      if (invoice.buyer?.gstin && invoice.buyer.gstin.trim().length >= 2) {
+        const stateCode = invoice.buyer.gstin.trim().substring(0, 2);
+        if (/^\d+$/.test(stateCode)) {
+          return stateCode === '33';
+        }
+      }
+      if (invoice.buyer?.address) {
+        const addrUpper = invoice.buyer.address.toUpperCase();
+        return addrUpper.includes('TAMIL') || addrUpper.includes('TN') || addrUpper.includes('33');
+      }
+      return true;
+    })();
+
+    let cgstPercent = isNonGst ? 0 : (invoice.cgstPercent !== undefined ? invoice.cgstPercent : 2.5);
+    let sgstPercent = isNonGst ? 0 : (invoice.sgstPercent !== undefined ? invoice.sgstPercent : 2.5);
+    let igstPercent = isNonGst ? 0 : (invoice.igstPercent !== undefined ? invoice.igstPercent : (isTamilNadu ? 0 : 5.0));
+
+    // Keep state aligned
+    if (!isNonGst) {
+      if (isTamilNadu) {
+        cgstPercent = cgstPercent || 2.5;
+        sgstPercent = sgstPercent || 2.5;
+        igstPercent = 0;
+      } else {
+        cgstPercent = 0;
+        sgstPercent = 0;
+        igstPercent = igstPercent || 5.0;
+      }
+    }
+
+    const cgst = isNonGst ? 0 : parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2));
+    const sgst = isNonGst ? 0 : parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2));
+    const igst = isNonGst ? 0 : parseFloat(((baseForGst * igstPercent) / 100).toFixed(2));
+
+    const roundOff = Number(invoice.roundOff) || 0;
+    const totalAmount = Math.round(baseForGst + cgst + sgst + igst + roundOff);
+
+    return {
+      ...invoice,
+      totalQty,
+      taxableAmount: itemsTotal,
+      cgstPercent,
+      sgstPercent,
+      igstPercent,
+      cgst,
+      sgst,
+      igst,
+      totalAmount,
+      amountInWords: numberToWords(totalAmount)
+    };
+  };
+
   // Restore modified bill to its original form
   const handleRestoreInvoice = (inv: GeneratedInvoice) => {
     if (window.confirm(`Are you sure you want to restore Bill ${inv.invoiceNo} to its original state? This will revert modifications.`)) {
@@ -740,18 +1051,30 @@ export default function Billing() {
     }
   };
 
-  // Delete Invoice with Confirmation
+  // Delete Invoice with confirmation dialog
   const handleDeleteInvoice = (id: string, invoiceNo: string) => {
-    if (window.confirm(`Are you sure you want to delete Bill ${invoiceNo}? This cannot be undone.`)) {
-      try {
-        const savedInvoices = JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]');
-        const filtered = savedInvoices.filter((item: any) => item.id !== id);
-        localStorage.setItem('inven_generated_invoices', JSON.stringify(filtered));
-        triggerSync();
-        showToast('success', `Bill ${invoiceNo} deleted successfully.`);
-      } catch (e) {
-        showToast('error', 'Failed to delete bill.');
+    setInvoiceToDelete({ id, invoiceNo });
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteInvoice = () => {
+    if (!invoiceToDelete) return;
+    const { id, invoiceNo } = invoiceToDelete;
+    try {
+      const savedInvoices = JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]');
+      const itemToDelete = savedInvoices.find((item: any) => item.id === id);
+      if (itemToDelete) {
+        updateStockForInvoice(itemToDelete.items, null);
       }
+      const filtered = savedInvoices.filter((item: any) => item.id !== id);
+      localStorage.setItem('inven_generated_invoices', JSON.stringify(filtered));
+      triggerSync();
+      showToast('success', `Bill ${invoiceNo} deleted successfully.`);
+    } catch (e) {
+      showToast('error', 'Failed to delete bill.');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setInvoiceToDelete(null);
     }
   };
 
@@ -1259,6 +1582,36 @@ export default function Billing() {
                   ))}
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Billing Type</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsNonGst(false)}
+                    className={cn(
+                      "flex-1 py-2 rounded-xl text-xs font-bold transition-all border",
+                      !isNonGst 
+                        ? "bg-indigo-600 border-indigo-600 text-white shadow-sm" 
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    GST (Tax)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsNonGst(true)}
+                    className={cn(
+                      "flex-1 py-2 rounded-xl text-xs font-bold transition-all border",
+                      isNonGst 
+                        ? "bg-slate-900 border-slate-900 text-white shadow-sm" 
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    Non GST (No Tax)
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* COLUMN 2: Buyer details */}
@@ -1423,15 +1776,17 @@ export default function Billing() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[5%]">S.No</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[33%]">Fabric Model / Description</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[12%]">HSN</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[10%]">Quantity</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[10%]">Unit</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[11%]">Unit Price</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[11%]">Discount (₹)</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[13%]">Amount</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[5%]"></th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[4%]">S.No</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[23%]">Fabric Model / Description</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[13%]">Style</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[8%]">HSN</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[9%]">Quantity</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[6%]">Unit</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[9%]">Unit Price</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[8%]">Discount (%)</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[9%]">Discount (₹)</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[11%]">Amount</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[4%]"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1464,7 +1819,7 @@ export default function Billing() {
                         </datalist>
                         
                         {item.modelName && (() => {
-                          const stock = getProductStockInfo(item.modelName);
+                          const stock = getProductStockInfo(item.modelName, editingInvoiceId);
                           const total = stock ? stock.totalQty : 0;
                           const godownDetails = stock ? Object.entries(stock.byGodown)
                             .map(([gd, q]) => `${gd}: ${q} pcs`)
@@ -1478,6 +1833,20 @@ export default function Billing() {
                         })()}
                       </td>
                       <td className="py-2 px-4">
+                        <select
+                          value={item.style || ''}
+                          onChange={(e) => updateLineItem(index, 'style', e.target.value)}
+                          className="w-full bg-slate-50/50 text-xs font-bold text-slate-700 outline-none cursor-pointer py-1.5 border-b border-dashed border-slate-200 rounded min-w-[110px]"
+                        >
+                          <option value="">Select Style</option>
+                          {styles.map((st) => (
+                            <option key={st.id} value={st.name}>
+                              {st.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 px-4">
                         <input 
                           type="text" 
                           value={item.hsn || ''}
@@ -1488,7 +1857,7 @@ export default function Billing() {
                       </td>
                       <td className="py-2 px-4">
                         {(() => {
-                          const stock = getProductStockInfo(item.modelName);
+                          const stock = getProductStockInfo(item.modelName, editingInvoiceId);
                           const total = stock ? stock.totalQty : 0;
                           const hasExceeded = item.modelName && item.quantity > total;
                           return (
@@ -1497,6 +1866,7 @@ export default function Billing() {
                                 type="number" 
                                 value={item.quantity}
                                 onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value) || 0)}
+                                onWheel={(e) => e.currentTarget.blur()}
                                 className={`w-full text-right font-bold px-2 py-1.5 outline-none border rounded font-mono transition-all ${
                                   hasExceeded 
                                     ? 'bg-rose-50 border-rose-400 text-rose-700 focus:bg-rose-100/50 focus:ring-1 focus:ring-rose-400' 
@@ -1513,23 +1883,28 @@ export default function Billing() {
                         })()}
                       </td>
                       <td className="py-2 px-4">
-                        <select
-                          value={item.unit || 'Pcs'}
-                          onChange={(e) => updateLineItem(index, 'unit', e.target.value)}
-                          className="w-full bg-slate-50/50 text-xs font-bold text-slate-700 outline-none cursor-pointer py-1.5 border-b border-dashed border-slate-200 rounded"
-                        >
-                          <option value="Pcs">Pcs</option>
-                          <option value="Mtrs">Mtrs</option>
-                          <option value="Kgs">Kgs</option>
-                          <option value="Rolls">Rolls</option>
-                        </select>
+                        <span className="text-xs font-bold text-slate-700">
+                          Pcs
+                        </span>
                       </td>
                       <td className="py-2 px-4">
                         <input 
                           type="number" 
                           value={item.unitPrice}
                           onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                          onWheel={(e) => e.currentTarget.blur()}
                           className="w-full bg-slate-50/50 text-right font-bold text-slate-800 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono"
+                        />
+                      </td>
+                      <td className="py-2 px-4">
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          value={item.discountPercentage || 0}
+                          onChange={(e) => updateLineItem(index, 'discountPercentage', parseFloat(e.target.value) || 0)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          placeholder="%"
+                          className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono min-w-[65px]"
                         />
                       </td>
                       <td className="py-2 px-4">
@@ -1537,6 +1912,7 @@ export default function Billing() {
                           type="number" 
                           value={item.discountCost || 0}
                           onChange={(e) => updateLineItem(index, 'discountCost', parseFloat(e.target.value) || 0)}
+                          onWheel={(e) => e.currentTarget.blur()}
                           className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono"
                         />
                       </td>
@@ -1572,6 +1948,7 @@ export default function Billing() {
                     type="number" 
                     value={packingCharges}
                     onChange={(e) => setPackingCharges(parseFloat(e.target.value) || 0)}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-2.5 text-sm font-semibold font-mono"
                   />
                 </div>
@@ -1582,43 +1959,61 @@ export default function Billing() {
                     step="0.01"
                     value={roundOff}
                     onChange={(e) => setRoundOff(parseFloat(e.target.value) || 0)}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-2.5 text-sm font-semibold font-mono"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">CGST (%)</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    value={cgstPercent}
-                    onChange={(e) => setCgstPercent(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
-                  />
+              {!isNonGst ? (
+                <div className="w-full">
+                  {isTamilNadu ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">CGST (%)</label>
+                        <input 
+                          type="number" 
+                          step="0.1"
+                          value={cgstPercent}
+                          onChange={(e) => setCgstPercent(parseFloat(e.target.value) || 0)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">SGST (%)</label>
+                        <input 
+                          type="number" 
+                          step="0.1"
+                          value={sgstPercent}
+                          onChange={(e) => setSgstPercent(parseFloat(e.target.value) || 0)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">IGST (%)</label>
+                        <input 
+                          type="number" 
+                          step="0.1"
+                          value={igstPercent}
+                          onChange={(e) => setIgstPercent(parseFloat(e.target.value) || 0)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">SGST (%)</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    value={sgstPercent}
-                    onChange={(e) => setSgstPercent(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
-                  />
+              ) : (
+                <div className="bg-slate-100/60 p-3 rounded-xl border border-slate-200/50 text-center">
+                  <p className="text-xs font-bold text-slate-500">Non-GST Billing Mode Enabled</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Taxes (CGST, SGST, IGST) are set to 0.0%</p>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">IGST (%)</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    value={igstPercent}
-                    onChange={(e) => setIgstPercent(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-4">
@@ -1633,19 +2028,19 @@ export default function Billing() {
                     <span className="font-mono text-slate-700">₹{Number(packingCharges).toLocaleString('en-IN')}</span>
                   </div>
                 )}
-                {cgstPercent > 0 && (
-                  <div className="flex justify-between text-xs font-bold text-slate-500">
-                    <span>CGST ({cgstPercent}%):</span>
-                    <span className="font-mono text-slate-700">₹{billingCalculations.cgst.toLocaleString('en-IN')}</span>
-                  </div>
+                {!isNonGst && isTamilNadu && (
+                  <>
+                    <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>CGST ({cgstPercent}%):</span>
+                      <span className="font-mono text-slate-700">₹{billingCalculations.cgst.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>SGST ({sgstPercent}%):</span>
+                      <span className="font-mono text-slate-700">₹{billingCalculations.sgst.toLocaleString('en-IN')}</span>
+                    </div>
+                  </>
                 )}
-                {sgstPercent > 0 && (
-                  <div className="flex justify-between text-xs font-bold text-slate-500">
-                    <span>SGST ({sgstPercent}%):</span>
-                    <span className="font-mono text-slate-700">₹{billingCalculations.sgst.toLocaleString('en-IN')}</span>
-                  </div>
-                )}
-                {igstPercent > 0 && (
+                {!isNonGst && !isTamilNadu && (
                   <div className="flex justify-between text-xs font-bold text-slate-500">
                     <span>IGST ({igstPercent}%):</span>
                     <span className="font-mono text-slate-700">₹{billingCalculations.igst.toLocaleString('en-IN')}</span>
@@ -1708,40 +2103,20 @@ export default function Billing() {
             setPreviewInvoice(prev => {
               if (!prev) return null;
               const updated = { ...prev, [key]: val };
-              
-              // Direct calculations block inside overlay for safety
-              const itemsTotal = updated.items.reduce((sum: number, item: any) => sum + (Number(item.totalCost) || 0), 0);
-              const totalQty = updated.items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
-              const packing = Number(updated.packingCharges) || 0;
-              const cgstPercent = updated.cgstPercent !== undefined ? updated.cgstPercent : 2.5;
-              const sgstPercent = updated.sgstPercent !== undefined ? updated.sgstPercent : 2.5;
-              const baseForGst = itemsTotal + packing;
-              const cgst = parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2));
-              const sgst = parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2));
-              const roundOff = Number(updated.roundOff) || 0;
-              const totalAmount = Math.round(baseForGst + cgst + sgst + roundOff);
-
-              return {
-                ...updated,
-                totalQty,
-                taxableAmount: itemsTotal,
-                cgst,
-                sgst,
-                totalAmount,
-                amountInWords: numberToWords(totalAmount)
-              };
+              return recalculateInvoiceTotals(updated);
             });
           }}
           updatePreviewBuyerField={(key, val) => {
             setPreviewInvoice(prev => {
               if (!prev) return null;
-              return {
+              const updated = {
                 ...prev,
                 buyer: {
                   ...prev.buyer,
                   [key]: val
                 }
               };
+              return recalculateInvoiceTotals(updated);
             });
           }}
           updatePreviewItem={(index, key, val) => {
@@ -1750,66 +2125,38 @@ export default function Billing() {
               const updatedItems = prev.items.map((item, idx) => {
                 if (idx === index) {
                   const updatedItem = { ...item, [key]: val };
-                  if (key === 'quantity' || key === 'unitPrice' || key === 'discountCost') {
+                  if (key === 'quantity' || key === 'unitPrice' || key === 'discountCost' || key === 'discountPercentage') {
                     const qty = Number(key === 'quantity' ? val : updatedItem.quantity) || 0;
                     const price = Number(key === 'unitPrice' ? val : updatedItem.unitPrice) || 0;
-                    const disc = Number(key === 'discountCost' ? val : updatedItem.discountCost) || 0;
-                    updatedItem.totalCost = Math.max(0, (qty * price) - disc);
+                    let discCost = Number(key === 'discountCost' ? val : updatedItem.discountCost) || 0;
+                    let discPct = Number(key === 'discountPercentage' ? val : updatedItem.discountPercentage) || 0;
+
+                    if (key === 'discountPercentage') {
+                      discCost = parseFloat(((qty * price) * (discPct / 100)).toFixed(2));
+                      updatedItem.discountCost = discCost;
+                    } else if (key === 'discountCost') {
+                      const base = qty * price;
+                      discPct = base > 0 ? parseFloat(((discCost / base) * 100).toFixed(2)) : 0;
+                      updatedItem.discountPercentage = discPct;
+                    } else {
+                      discCost = parseFloat(((qty * price) * (discPct / 100)).toFixed(2));
+                      updatedItem.discountCost = discCost;
+                    }
+
+                    updatedItem.totalCost = Math.max(0, (qty * price) - discCost);
                   }
                   return updatedItem;
                 }
                 return item;
               });
-
-              const itemsTotal = updatedItems.reduce((sum: number, item: any) => sum + (Number(item.totalCost) || 0), 0);
-              const totalQty = updatedItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
-              const packing = Number(prev.packingCharges) || 0;
-              const cgstPercent = prev.cgstPercent !== undefined ? prev.cgstPercent : 2.5;
-              const sgstPercent = prev.sgstPercent !== undefined ? prev.sgstPercent : 2.5;
-              const baseForGst = itemsTotal + packing;
-              const cgst = parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2));
-              const sgst = parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2));
-              const roundOff = Number(prev.roundOff) || 0;
-              const totalAmount = Math.round(baseForGst + cgst + sgst + roundOff);
-
-              return {
-                ...prev,
-                items: updatedItems,
-                totalQty,
-                taxableAmount: itemsTotal,
-                cgst,
-                sgst,
-                totalAmount,
-                amountInWords: numberToWords(totalAmount)
-              };
+              return recalculateInvoiceTotals({ ...prev, items: updatedItems });
             });
           }}
           removePreviewItem={(index) => {
             setPreviewInvoice(prev => {
               if (!prev) return null;
               const updatedItems = prev.items.filter((_, idx) => idx !== index);
-              
-              const itemsTotal = updatedItems.reduce((sum: number, item: any) => sum + (Number(item.totalCost) || 0), 0);
-              const totalQty = updatedItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
-              const packing = Number(prev.packingCharges) || 0;
-              const cgstPercent = prev.cgstPercent !== undefined ? prev.cgstPercent : 2.5;
-              const sgstPercent = prev.sgstPercent !== undefined ? prev.sgstPercent : 2.5;
-              const baseForGst = itemsTotal + packing;
-              const cgst = parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2));
-              const sgst = parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2));
-              const roundOff = Number(prev.roundOff) || 0;
-              const totalAmount = Math.round(baseForGst + cgst + sgst + roundOff);
-
-              return {
-                ...prev,
-                items: updatedItems,
-                totalQty,
-                taxableAmount: itemsTotal,
-                cgst,
-                sgst,
-                totalAmount,
-                amountInWords: numberToWords(totalAmount)
-              };
+              return recalculateInvoiceTotals({ ...prev, items: updatedItems });
             });
           }}
           addPreviewItem={() => {
@@ -1831,28 +2178,7 @@ export default function Billing() {
                 unit: 'Pcs'
               };
               const updatedItems = [...prev.items, newItem];
-
-              const itemsTotal = updatedItems.reduce((sum: number, item: any) => sum + (Number(item.totalCost) || 0), 0);
-              const totalQty = updatedItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
-              const packing = Number(prev.packingCharges) || 0;
-              const cgstPercent = prev.cgstPercent !== undefined ? prev.cgstPercent : 2.5;
-              const sgstPercent = prev.sgstPercent !== undefined ? prev.sgstPercent : 2.5;
-              const baseForGst = itemsTotal + packing;
-              const cgst = parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2));
-              const sgst = parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2));
-              const roundOff = Number(prev.roundOff) || 0;
-              const totalAmount = Math.round(baseForGst + cgst + sgst + roundOff);
-
-              return {
-                ...prev,
-                items: updatedItems,
-                totalQty,
-                taxableAmount: itemsTotal,
-                cgst,
-                sgst,
-                totalAmount,
-                amountInWords: numberToWords(totalAmount)
-              };
+              return recalculateInvoiceTotals({ ...prev, items: updatedItems });
             });
           }}
           appSettings={appSettings}
@@ -1904,6 +2230,7 @@ export default function Billing() {
                   type="number" 
                   value={payAmount}
                   onChange={(e) => setPayAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-black text-slate-800 font-mono outline-none"
                 />
               </div>
@@ -1947,6 +2274,35 @@ export default function Billing() {
                 className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
               >
                 Record Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM DELETE CONFIRMATION DIALOG MODAL */}
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 p-8 text-center">
+            <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto mb-6 animate-pulse">
+              <Trash2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Confirm Delete</h3>
+            <p className="text-sm text-slate-500 mb-8 font-medium">
+              Are you sure you want to delete Bill <span className="font-bold text-slate-700">"{invoiceToDelete?.invoiceNo}"</span>? This action will restore product stocks and cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setDeleteConfirmOpen(false); setInvoiceToDelete(null); }}
+                className="flex-1 py-3 px-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDeleteInvoice}
+                className="flex-1 py-3 px-4 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-100 text-sm"
+              >
+                Delete Bill
               </button>
             </div>
           </div>
