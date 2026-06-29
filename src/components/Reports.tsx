@@ -606,86 +606,6 @@ export default function Reports() {
             {/* Sales & Bills Report Section */}
             {selectedReport === 'sales' && (
               <>
-                {/* 1. Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Gross Book Value</p>
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2 flex items-baseline gap-1">
-                      <IndianRupee className="w-3.5 h-3.5 text-slate-400 inline shrink-0" />
-                      {salesReportData.summary.totalSales.toLocaleString()}
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Sum of generated credit & cash sales bills.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-emerald-500">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-emerald-600">Total Capital Received</p>
-                    <h3 className="text-xl font-black text-emerald-700 tracking-tight mt-2 flex items-baseline gap-1">
-                      <IndianRupee className="w-3.5 h-3.5 text-emerald-400 inline shrink-0" />
-                      {salesReportData.summary.totalCollected.toLocaleString()}
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Actual paid invoices aggregated amount.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-rose-500">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-rose-500">Accounts Receivable</p>
-                    <h3 className="text-xl font-black text-rose-700 tracking-tight mt-2 flex items-baseline gap-1">
-                      <IndianRupee className="w-3.5 h-3.5 text-rose-400 inline shrink-0" />
-                      {salesReportData.summary.totalReceivable.toLocaleString()}
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Pending payments yet to be recovered.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Taxes (GST Audit)</p>
-                    <h3 className="text-base font-black text-slate-800 tracking-tight mt-2.5 flex items-baseline gap-1">
-                      <IndianRupee className="w-3 h-3 text-slate-400 inline shrink-0" />
-                      {salesReportData.summary.totalTax.toLocaleString()}
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1.5 font-semibold leading-normal">Accumulated CGST + SGST + IGST logs.</p>
-                  </div>
-                </div>
-
-                {/* 2. Secondary Breakdown Metrics Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cash vs. Credit Liquidity Ratio</p>
-                    <div className="mt-4 space-y-4">
-                      <div>
-                        <div className="flex justify-between text-xs font-bold text-slate-700 select-none">
-                          <span>Cash Sales ({salesReportData.summary.cashSalesCount} Bills)</span>
-                          <span>₹{salesReportData.summary.cashAmount.toLocaleString()}</span>
-                        </div>
-                        <div className="h-3 w-full bg-slate-50 rounded-full overflow-hidden mt-1 p-0.5 border border-slate-100">
-                          <div 
-                            className="h-full bg-slate-900 rounded-full transition-all" 
-                            style={{ width: `${(salesReportData.summary.cashAmount / (salesReportData.summary.totalSales || 1)) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-xs font-bold text-slate-700 select-none">
-                          <span>Credit Sales ({salesReportData.summary.creditSalesCount} Bills)</span>
-                          <span>₹{salesReportData.summary.creditAmount.toLocaleString()}</span>
-                        </div>
-                        <div className="h-3 w-full bg-slate-50 rounded-full overflow-hidden mt-1 p-0.5 border border-slate-100">
-                          <div 
-                            className="h-full bg-rose-500 rounded-full transition-all" 
-                            style={{ width: `${(salesReportData.summary.creditAmount / (salesReportData.summary.totalSales || 1)) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bulk Quantities Dispatched</p>
-                      <h4 className="text-xl font-extrabold text-slate-800 tracking-tight mt-1.5 select-none">{salesReportData.summary.totalQtySold.toLocaleString()} Pieces</h4>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-4">This metric isolates products actually recorded in buyers invoices across the registered dates.</p>
-                  </div>
-                </div>
-
                 {/* 3. Transaction Details List */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden p-6">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
@@ -756,65 +676,6 @@ export default function Reports() {
             {/* Expenses Breakdown Page */}
             {selectedReport === 'expenses' && (
               <>
-                {/* 1. Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-rose-500">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Gross Outwards Cashflow</p>
-                    <h3 className="text-xl font-black text-rose-700 tracking-tight mt-2 flex items-baseline gap-1">
-                      <IndianRupee className="w-3.5 h-3.5 text-rose-450 inline shrink-0" />
-                      {expensesReportData.totalAmount.toLocaleString()}
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Sum of audited expenses ledger.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Active Categories Logged</p>
-                    <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2 select-none">
-                      {Object.keys(expensesReportData.categoryBreakdown).length} Items
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Distinct categories targeted in current range.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Audited Records Count</p>
-                    <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2 select-none">
-                      {expensesReportData.items.length} Receipts
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Individual receipts matched.</p>
-                  </div>
-                </div>
-
-                {/* 2. Categorization breakdown logs */}
-                <div className="grid grid-cols-1 gap-5">
-                  <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-                    <h3 className="text-xs font-black text-slate-700 tracking-widest uppercase mb-4 select-none">Expense Budget Distribution</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                      {Object.entries(expensesReportData.categoryBreakdown).map(([cat, val]) => {
-                        const valNum = val as number;
-                        const pct = (valNum / (expensesReportData.totalAmount || 1)) * 100;
-                        return (
-                          <div key={cat} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100/50">
-                            <div className="flex justify-between text-xs font-bold text-slate-700 select-none">
-                              <span className="truncate max-w-[150px]">{cat}</span>
-                              <span className="font-mono">₹{valNum.toLocaleString()}</span>
-                            </div>
-                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mt-2 p-0.5">
-                              <div className="h-full bg-rose-500 rounded-full" style={{ width: `${pct}%` }} />
-                            </div>
-                            <p className="text-[9px] text-slate-450 mt-1 font-medium select-none">{pct.toFixed(1)}% of range budget allocation.</p>
-                          </div>
-                        );
-                      })}
-
-                      {Object.keys(expensesReportData.categoryBreakdown).length === 0 && (
-                        <div className="col-span-full text-center py-6 text-xs text-slate-400 font-extrabold pb-4 uppercase select-none">
-                          No category allocations in this segment
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
                 {/* 3. Detailed Transaction logs */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
@@ -865,26 +726,6 @@ export default function Reports() {
             {/* Income Report Section */}
             {selectedReport === 'income' && (
               <>
-                {/* 1. Summary Card */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-emerald-500">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-emerald-600">Total Auxiliary Incomes</p>
-                    <h3 className="text-xl font-black text-emerald-700 tracking-tight mt-2 flex items-baseline gap-1">
-                      <IndianRupee className="w-3.5 h-3.5 text-emerald-400 inline shrink-0" />
-                      {incomesReportData.totalAmount.toLocaleString()}
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Sum of secondary cash infusions matched.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Entries Aggregate</p>
-                    <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2 select-none">
-                      {incomesReportData.items.length} Inflows
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Individual receipts matching criteria.</p>
-                  </div>
-                </div>
-
                 {/* 2. List component */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
@@ -900,29 +741,108 @@ export default function Reports() {
                           <th className="pb-3.5">Filing Date</th>
                           <th className="pb-3.5 text-center">Filing System</th>
                           <th className="pb-3.5">Client / Customer Mapping</th>
+                          <th className="pb-3.5">Balance Amount</th>
                           <th className="pb-3.5">Ledger Context</th>
                           <th className="pb-3.5 text-right">Inflow Amount</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {incomesReportData.items.map((inc) => (
-                          <tr key={inc.id} className="hover:bg-slate-50/50 transition-all">
-                            <td className="py-3 text-xs font-bold text-emerald-700">{inc.categoryName}</td>
-                            <td className="py-3 text-xs font-semibold text-slate-500 font-mono">{inc.date}</td>
-                            <td className="py-3 text-center">
-                              <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-600 rounded-lg text-[9px] font-black uppercase">
-                                {inc.paymentMode}
-                              </span>
-                            </td>
-                            <td className="py-3 text-xs font-bold text-slate-700 capitalize">{inc.customerName || 'Standard Client'}</td>
-                            <td className="py-3 text-xs text-slate-500 truncate max-w-[200px]">{inc.notes || '---'}</td>
-                            <td className="py-3 text-right text-xs font-black text-slate-800 font-mono">₹{inc.amount.toLocaleString()}</td>
-                          </tr>
-                        ))}
+                        {incomesReportData.items.map((inc) => {
+                          const cust = inc.customerId ? customers.find(c => c.id === inc.customerId) : null;
+                          
+                          // Calculate remaining balance (receivable)
+                          let remainingBalance = 0;
+                          if (cust) {
+                            const customerInvoices = invoices.filter(inv => {
+                              const invBuyerName = (inv.buyer?.name || '').trim().toUpperCase();
+                              const selCustName = (cust?.name || '').trim().toUpperCase();
+                              const invCustId = (inv.customerId || '').trim().toUpperCase();
+                              const selCustId = (cust?.id || '').trim().toUpperCase();
+                              return (invBuyerName === selCustName && invBuyerName !== '') || (invCustId === selCustId && invCustId !== '');
+                            });
+                            const unpaidInvoiceAmount = customerInvoices.reduce((sum, inv) => {
+                              const total = Number(inv.totalAmount) || 0;
+                              const paid = Number(inv.paidAmount) || 0;
+                              return sum + Math.max(0, total - paid);
+                            }, 0);
+                            remainingBalance = (cust.openingBalance || 0) + unpaidInvoiceAmount;
+                          }
+
+                          return (
+                            <tr key={inc.id} className="hover:bg-slate-50/50 transition-all">
+                              <td className="py-3 text-xs font-bold text-emerald-700">
+                                <div>{inc.categoryName}</div>
+                                <div className="text-[9px] font-mono text-slate-400 font-semibold">{inc.id}</div>
+                              </td>
+                              <td className="py-3 text-xs font-semibold text-slate-500 font-mono">{inc.date}</td>
+                              <td className="py-3 text-center">
+                                <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-600 rounded-lg text-[9px] font-black uppercase">
+                                  {inc.paymentMode}
+                                </span>
+                              </td>
+                              <td className="py-3 text-xs">
+                                {cust ? (
+                                  <div className="space-y-1">
+                                    <span className="font-bold text-slate-800 capitalize block">{inc.customerName}</span>
+                                    <span className="text-[10px] font-mono text-slate-400 block font-semibold">{cust.id}</span>
+                                  </div>
+                                ) : (
+                                  <span className="font-bold text-slate-500 italic capitalize">{inc.customerName || 'Standard Client'}</span>
+                                )}
+                              </td>
+                              <td className="py-3 text-xs">
+                                {cust ? (
+                                  <div className="flex flex-col gap-1 font-mono text-[10px] font-bold">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-slate-400 uppercase tracking-wider text-[9px]">Opening:</span>
+                                      <span className="text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                                        ₹{(cust.openingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-indigo-500 uppercase tracking-wider text-[9px]">Remaining:</span>
+                                      <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                        ₹{remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-emerald-500 uppercase tracking-wider text-[9px]">Credit Bal:</span>
+                                      <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                        ₹{remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 italic font-mono">---</span>
+                                )}
+                              </td>
+                              <td className="py-3 text-xs">
+                                {inc.allocationType === 'opening_balance' ? (
+                                  <div className="space-y-1">
+                                    <span className="inline-block bg-amber-50 text-amber-600 border border-amber-200 rounded px-2 py-0.5 text-[9px] font-bold uppercase">
+                                      Deducted from OB
+                                    </span>
+                                    {inc.notes && <p className="text-[10px] text-slate-400 italic line-clamp-1">{inc.notes}</p>}
+                                  </div>
+                                ) : inc.allocationType === 'invoice' && inc.invoiceNo ? (
+                                  <div className="space-y-1">
+                                    <span className="inline-block bg-indigo-50 text-indigo-600 border border-indigo-200 rounded px-2 py-0.5 text-[9px] font-bold uppercase">
+                                      Paid Against Bill: #{inc.invoiceNo}
+                                    </span>
+                                    {inc.notes && <p className="text-[10px] text-slate-400 italic line-clamp-1">{inc.notes}</p>}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-500 italic text-[11px] block">{inc.notes || '---'}</span>
+                                )}
+                              </td>
+                              <td className="py-3 text-right text-xs font-black text-slate-800 font-mono">₹{inc.amount.toLocaleString()}</td>
+                            </tr>
+                          );
+                        })}
 
                         {incomesReportData.items.length === 0 && (
                           <tr>
-                            <td colSpan={6} className="text-center py-10">
+                            <td colSpan={7} className="text-center py-10">
                               <p className="text-xs font-black text-slate-400 uppercase select-none">No secondary inflows matched in coordinates</p>
                             </td>
                           </tr>
@@ -937,34 +857,6 @@ export default function Reports() {
             {/* Inventory report logs */}
             {selectedReport === 'inventory' && (
               <>
-                {/* 1. Summary Metrics */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-amber-500">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-amber-600">Consolidated Raw Stock Valuation</p>
-                    <h3 className="text-xl font-black text-amber-700 tracking-tight mt-2 flex items-baseline gap-1">
-                      <IndianRupee className="w-3.5 h-3.5 text-amber-400 inline shrink-0" />
-                      {inventoryReportData.summary.totalValue.toLocaleString()}
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Theoretical cash valuation of current ranges.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Quantity In Warehouse</p>
-                    <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2 select-none">
-                      {inventoryReportData.summary.totalQuantity.toLocaleString()} Units
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Sum of both raw meters and fabrics.</p>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Matched Item Batches</p>
-                    <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2 select-none">
-                      {inventoryReportData.summary.totalBatches} Registers
-                    </h3>
-                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Unique batches currently sitting in audit.</p>
-                  </div>
-                </div>
-
                 {/* 2. Detailed audit grid */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
