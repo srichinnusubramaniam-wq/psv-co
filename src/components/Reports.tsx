@@ -18,10 +18,14 @@ import {
   AlertOctagon,
   ChevronRight,
   RefreshCw,
-  Eye
+  Eye,
+  X,
+  Coins,
+  Layers
 } from 'lucide-react';
+import { cn } from '@/src/lib/utils';
 
-type ReportType = 'sales' | 'expenses' | 'income' | 'inventory' | 'production';
+type ReportType = 'sales' | 'expenses' | 'income' | 'inventory' | 'production' | 'supplier' | 'godown';
 
 interface InvoiceItem {
   id: string;
@@ -81,8 +85,15 @@ interface InventoryItem {
   fabricType: string;
   pricePerMeter: number;
   quantity: number;
-  unit: 'Meters' | 'Pieces';
+  unit: 'Meters' | 'Pieces' | 'KGs';
   entryDate: string;
+  paidAmount?: number;
+  paymentStatus?: 'Unpaid' | 'Partially Paid' | 'Paid';
+  paymentType?: 'Cash' | 'Credit';
+  creditDays?: number;
+  dueDate?: string;
+  totalCost?: number;
+  productGroupName?: string;
 }
 
 interface ProductionAssignment {
@@ -119,7 +130,22 @@ export default function Reports() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [production, setProduction] = useState<ProductionAssignment[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [godowns, setGodowns] = useState<any[]>([]);
+  const [selectedGodown, setSelectedGodown] = useState<string>('All');
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('All');
   const [companyName, setCompanyName] = useState('P.S.V & CO');
+
+  // Supplier Payment Modal State
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [paymentItem, setPaymentItem] = useState<any | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState({
+    date: '',
+    paymentMode: 'Bank Transfer',
+    notes: '',
+    amountToPay: 0,
+    isFullPayment: true
+  });
 
   // Reload data from localstorage
   const loadData = () => {
@@ -130,6 +156,18 @@ export default function Reports() {
       setInventory(JSON.parse(localStorage.getItem('inven_inventory') || '[]'));
       setProduction(JSON.parse(localStorage.getItem('inven_production') || '[]'));
       setCustomers(JSON.parse(localStorage.getItem('inven_customers') || '[]'));
+      setSuppliers(JSON.parse(localStorage.getItem('inven_suppliers') || '[]'));
+      
+      let savedGodowns = JSON.parse(localStorage.getItem('inven_unit_master') || '[]');
+      if (!savedGodowns || savedGodowns.length === 0) {
+        savedGodowns = [
+          { id: 'U-001', name: 'UNIT-1' },
+          { id: 'U-002', name: 'UNIT-2' },
+          { id: 'U-003', name: 'UNIT-3' }
+        ];
+      }
+      setGodowns(savedGodowns);
+
       const settings = JSON.parse(localStorage.getItem('inven_settings') || '{}');
       if (settings.companyName) {
         setCompanyName(settings.companyName);
@@ -356,6 +394,221 @@ export default function Reports() {
     return { items: filtered, summary };
   }, [production, startDate, endDate, searchQuery]);
 
+  // 6. Supplier Report Calculations
+  const supplierReportData = useMemo(() => {
+    const filtered = inventory.filter(item => {
+      const matchRange = isWithinRange(item.entryDate);
+      const matchSupplier = selectedSupplier === 'All' || item.supplierName === selectedSupplier;
+      const matchSearch = searchQuery === '' ||
+        item.supplierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.fabricType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.id && item.id.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchRange && matchSupplier && matchSearch;
+    });
+
+    const summary = filtered.reduce((acc, item) => {
+      const gross = item.totalCost !== undefined && item.totalCost !== null ? Number(item.totalCost) : (Number(item.pricePerMeter) || 0) * (Number(item.quantity) || 0);
+      const paid = Number(item.paidAmount) || 0;
+      const pending = Math.max(0, gross - paid);
+
+      acc.totalPurchases += gross;
+      acc.totalPaid += paid;
+      acc.totalPending += pending;
+      acc.totalLots += 1;
+
+      return acc;
+    }, {
+      totalPurchases: 0,
+      totalPaid: 0,
+      totalPending: 0,
+      totalLots: 0
+    });
+
+    return { items: filtered, summary };
+  }, [inventory, startDate, endDate, selectedSupplier, searchQuery]);
+
+
+  // 7. Godown Stock Ledger Calculations
+  const godownReportData = useMemo(() => {
+    const filtered = production.filter(p => {
+      const matchRange = isWithinRange(p.assignedDate);
+      
+      // Filter by selected godown.
+      // If we select a specific godown, the item belongs to it if p.unit === selectedGodown OR (p.type === 'Transfer' && p.toGodown === selectedGodown)
+      const matchesGodown = selectedGodown === 'All' || 
+        p.unit === selectedGodown || 
+        (p.type === 'Transfer' && p.toGodown === selectedGodown);
+        
+      const matchSearch = searchQuery === '' ||
+        p.fabricType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.modelName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.toGodown && p.toGodown.toLowerCase().includes(searchQuery.toLowerCase()));
+        
+      return matchRange && matchesGodown && matchSearch;
+    });
+
+    const summary = filtered.reduce((acc, p) => {
+      const qty = Number(p.quantity) || 0;
+      
+      const isFinished = p.type === 'Finished Goods' || p.status === 'Finished Goods';
+      const isDamage = p.type === 'Damage';
+      const isTransfer = p.type === 'Transfer';
+      const isWIP = !isFinished && !isDamage && !isTransfer;
+
+      if (isFinished) {
+        acc.totalFinished += qty;
+      } else if (isDamage) {
+        acc.totalDamage += qty;
+      } else if (isTransfer) {
+        acc.totalTransferred += qty;
+      } else if (isWIP) {
+        acc.totalWIP += qty;
+      }
+      
+      acc.totalRecords += 1;
+      return acc;
+    }, {
+      totalFinished: 0,
+      totalDamage: 0,
+      totalTransferred: 0,
+      totalWIP: 0,
+      totalRecords: 0
+    });
+
+    return { items: filtered, summary };
+  }, [production, startDate, endDate, selectedGodown, searchQuery]);
+
+
+  // Record Expense Entry on Supplier Payment
+  const recordExpenseEntry = (
+    lotId: string, 
+    supplierName: string, 
+    amount: number, 
+    date: string, 
+    paymentMode: string, 
+    customNotes?: string
+  ) => {
+    try {
+      const savedCategoriesRaw = localStorage.getItem('inven_expense_master') || '[]';
+      let categoriesList = JSON.parse(savedCategoriesRaw);
+      let targetCategory = categoriesList.find((c: any) => c && c.name?.toLowerCase() === 'raw material purchases');
+      
+      if (!targetCategory) {
+        targetCategory = {
+          id: `EXP-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+          name: 'Raw Material Purchases'
+        };
+        categoriesList.push(targetCategory);
+        localStorage.setItem('inven_expense_master', JSON.stringify(categoriesList));
+      }
+
+      const savedExpensesRaw = localStorage.getItem('inven_expense_records') || '[]';
+      const expensesList = JSON.parse(savedExpensesRaw);
+      
+      const newExpenseRecord = {
+        id: `REC-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+        categoryId: targetCategory.id,
+        categoryName: targetCategory.name,
+        amount: amount,
+        date: date,
+        paymentMode: paymentMode,
+        notes: customNotes || `Payment for Raw Materials Lot ${lotId} to ${supplierName}`,
+        createdAt: new Date().toISOString()
+      };
+
+      expensesList.unshift(newExpenseRecord);
+      localStorage.setItem('inven_expense_records', JSON.stringify(expensesList));
+    } catch (e) {
+      console.error('Failed to log expense record', e);
+    }
+  };
+
+  const openPaymentDialog = (item: any) => {
+    const grossAmount = item.totalCost !== undefined && item.totalCost !== null ? Number(item.totalCost) : (item.pricePerMeter || 0) * (item.quantity || 0);
+    const previousPaid = Number(item.paidAmount) || 0;
+    const remainingPending = Math.max(0, grossAmount - previousPaid);
+    
+    setPaymentItem(item);
+    setPaymentDetails({
+      date: new Date().toISOString().split('T')[0],
+      paymentMode: 'Bank Transfer',
+      notes: `Payment for Raw Materials Lot ${item.id} (${item.supplierName})`,
+      amountToPay: remainingPending,
+      isFullPayment: true
+    });
+    setIsPaymentDialogOpen(true);
+  };
+
+  const handlePaymentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentItem) return;
+
+    const grossAmount = paymentItem.totalCost !== undefined && paymentItem.totalCost !== null ? Number(paymentItem.totalCost) : (paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0);
+    const previousPaid = Number(paymentItem.paidAmount) || 0;
+    const amountToPay = Number(paymentDetails.amountToPay) || 0;
+    const newTotalPaid = Math.min(grossAmount, previousPaid + amountToPay);
+    const isFullyPaid = newTotalPaid >= grossAmount;
+    const newStatus = isFullyPaid ? 'Paid' as const : 'Partially Paid' as const;
+
+    const updatedInventory = inventory.map(item => {
+      if (item.id === paymentItem.id) {
+        return { 
+          ...item, 
+          paymentStatus: newStatus,
+          paidAmount: newTotalPaid
+        };
+      }
+      return item;
+    });
+
+    localStorage.setItem('inven_inventory', JSON.stringify(updatedInventory));
+
+    recordExpenseEntry(
+      paymentItem.id,
+      paymentItem.supplierName,
+      amountToPay,
+      paymentDetails.date,
+      paymentDetails.paymentMode,
+      paymentDetails.notes
+    );
+
+    // Refresh state
+    setInventory(updatedInventory);
+    const savedExpenses = JSON.parse(localStorage.getItem('inven_expense_records') || '[]');
+    setExpenses(savedExpenses);
+
+    setIsPaymentDialogOpen(false);
+    setPaymentItem(null);
+
+    // Trigger local storage sync across tabs
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleUnmarkPaid = () => {
+    if (!paymentItem) return;
+    const updatedInventory = inventory.map(item => {
+      if (item.id === paymentItem.id) {
+        return { 
+          ...item, 
+          paymentStatus: 'Unpaid' as const, 
+          paidAmount: 0 
+        };
+      }
+      return item;
+    });
+
+    localStorage.setItem('inven_inventory', JSON.stringify(updatedInventory));
+    
+    // Refresh state
+    setInventory(updatedInventory);
+    setIsPaymentDialogOpen(false);
+    setPaymentItem(null);
+
+    // Trigger local storage sync across tabs
+    window.dispatchEvent(new Event('storage'));
+  };
+
   // Trigger print view
   const handlePrint = () => {
     window.print();
@@ -389,15 +642,60 @@ export default function Reports() {
         e.notes || ''
       ]);
     } else if (selectedReport === 'income') {
-      headers = ['Category', 'Date', 'Amount', 'Payment Mode', 'Customer', 'Notes'];
-      rows = incomesReportData.items.map(i => [
-        i.categoryName,
-        i.date,
-        String(i.amount),
-        i.paymentMode,
-        i.customerName || '',
-        i.notes || ''
-      ]);
+      headers = [
+        'Income Category',
+        'Filing Date',
+        'Filing System',
+        'Client / Customer Mapping',
+        'Balance Amount',
+        'Ledger Context',
+        'Received Amount'
+      ];
+      rows = incomesReportData.items.map(inc => {
+        const cust = inc.customerId ? customers.find(c => c.id === inc.customerId) : null;
+        
+        // Calculate remaining balance (receivable)
+        let remainingBalance = 0;
+        if (cust) {
+          const customerInvoices = invoices.filter(inv => {
+            const invBuyerName = (inv.buyer?.name || '').trim().toUpperCase();
+            const selCustName = (cust?.name || '').trim().toUpperCase();
+            const invCustId = (inv.customerId || '').trim().toUpperCase();
+            const selCustId = (cust?.id || '').trim().toUpperCase();
+            return (invBuyerName === selCustName && invBuyerName !== '') || (invCustId === selCustId && invCustId !== '');
+          });
+          const unpaidInvoiceAmount = customerInvoices.reduce((sum, inv) => {
+            const total = Number(inv.totalAmount) || 0;
+            const paid = Number(inv.paidAmount) || 0;
+            return sum + Math.max(0, total - paid);
+          }, 0);
+          remainingBalance = (cust.openingBalance || 0) + unpaidInvoiceAmount;
+        }
+
+        // Ledger Context string
+        let ledgerContextStr = '';
+        if (inc.allocationType === 'opening_balance') {
+          ledgerContextStr = 'Deducted from OB' + (inc.notes ? ` - ${inc.notes}` : '');
+        } else if (inc.allocationType === 'invoice' && inc.invoiceNo) {
+          ledgerContextStr = `Paid Against Bill: #${inc.invoiceNo}` + (inc.notes ? ` - ${inc.notes}` : '');
+        } else {
+          ledgerContextStr = inc.notes || '---';
+        }
+
+        const categoryVal = inc.id ? `${inc.categoryName} (${inc.id})` : inc.categoryName;
+        const customerVal = cust ? `${inc.customerName} (${cust.id})` : (inc.customerName || 'Standard Client');
+        const balanceVal = cust ? `${remainingBalance.toFixed(2)}` : '---';
+
+        return [
+          categoryVal,
+          inc.date,
+          inc.paymentMode,
+          customerVal,
+          balanceVal,
+          ledgerContextStr,
+          String(inc.amount)
+        ];
+      });
     } else if (selectedReport === 'inventory') {
       headers = ['Fabric Type', 'Supplier', 'Entry Date', 'Quantity', 'Price/Meter', 'Total Value'];
       rows = inventoryReportData.items.map(i => [
@@ -418,18 +716,94 @@ export default function Reports() {
         p.status,
         p.assignedDate
       ]);
+    } else if (selectedReport === 'supplier') {
+      headers = [
+        'Lot ID',
+        'Supplier Name',
+        'Item Details (Fabric Lot)',
+        'Acquisition Date',
+        'Payment Mode',
+        'Due Date',
+        'Net Amount (Gross)',
+        'Quantity',
+        'Unit',
+        'Paid So Far',
+        'Remaining Pending Due',
+        'Payment Status'
+      ];
+      rows = supplierReportData.items.map(i => {
+        const gross = i.totalCost !== undefined && i.totalCost !== null ? Number(i.totalCost) : (Number(i.pricePerMeter) || 0) * (Number(i.quantity) || 0);
+        const paid = Number(i.paidAmount) || 0;
+        const pending = Math.max(0, gross - paid);
+        const itemDetails = `${i.fabricType}${i.productGroupName ? ` (${i.productGroupName})` : ''}`;
+        const statusText = paid >= gross ? 'Paid' : (paid > 0 ? 'Partially Paid' : 'Unpaid');
+
+        return [
+          i.id,
+          i.supplierName,
+          itemDetails,
+          i.entryDate,
+          i.paymentType || 'Cash',
+          i.dueDate || '-',
+          String(gross),
+          String(i.quantity),
+          i.unit || 'Meters',
+          String(paid),
+          String(pending),
+          statusText
+        ];
+      });
+    } else if (selectedReport === 'godown') {
+      headers = [
+        'Transaction ID',
+        'Date',
+        'Fabric Type / Item Details',
+        'Model Name',
+        'Size',
+        'Transaction Type',
+        'Quantity',
+        'Source Godown',
+        'Destination Godown',
+        'Status'
+      ];
+      rows = godownReportData.items.map(i => {
+        const transType = i.type === 'Finished Goods' || i.status === 'Finished Goods'
+          ? 'Finished Goods'
+          : i.type === 'Damage'
+          ? 'Damage'
+          : i.type === 'Transfer'
+          ? 'Transfer'
+          : 'Work in Progress';
+          
+        return [
+          i.id,
+          i.assignedDate,
+          i.fabricType,
+          i.modelName || '-',
+          i.size || '-',
+          transType,
+          String(i.quantity),
+          i.unit,
+          i.toGodown || '-',
+          i.status
+        ];
+      });
     }
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(','), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))].join('\n');
+    const csvContent = [
+      headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','), 
+      ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
     
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.href = url;
     link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -473,7 +847,7 @@ export default function Reports() {
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-1">
           <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest px-2.5 mb-3">Ledger Modules</p>
           
-          {(['sales', 'expenses', 'income', 'inventory', 'production'] as const).map((type) => {
+          {([ 'sales', 'expenses', 'income', 'inventory', 'production', 'supplier', 'godown' ] as const).map((type) => {
             const isActive = selectedReport === type;
             const meta = {
               sales: { label: 'Sales & Invoices', desc: 'Invoiced orders, GST breakdown & dues', icon: FileText, color: 'text-indigo-600' },
@@ -481,12 +855,19 @@ export default function Reports() {
               income: { label: 'Other Income Logs', desc: 'Capital inputs & secondary incomes', icon: TrendingUp, color: 'text-emerald-500' },
               inventory: { label: 'Inventory Stock Assets', desc: 'Fabric warehouse & valuation audit', icon: Package, color: 'text-amber-500' },
               production: { label: 'Production Workflows', desc: 'Fabric delivery & supervisor assignments', icon: Factory, color: 'text-sky-500' },
+              supplier: { label: 'Supplier Ledger', desc: 'Vendor transactions & payment desk dues', icon: Coins, color: 'text-amber-500' },
+              godown: { label: 'Godown Stock Ledger', desc: 'Warehousing stock assets & transfers', icon: Layers, color: 'text-violet-600' }
             }[type];
 
             return (
               <button
                 key={type}
-                onClick={() => { setSelectedReport(type); setSearchQuery(''); }}
+                onClick={() => { 
+                  setSelectedReport(type); 
+                  setSearchQuery(''); 
+                  setSelectedSupplier('All'); 
+                  setSelectedGodown('All'); 
+                }}
                 className={`w-full flex items-start gap-3.5 p-3 rounded-2xl text-left transition-all duration-300 cursor-pointer ${
                   isActive 
                     ? 'bg-indigo-50/70 border-none shadow-sm' 
@@ -513,7 +894,10 @@ export default function Reports() {
             <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg uppercase">Range Constraint Active</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
+          <div className={cn(
+            "grid grid-cols-1 gap-6 items-end",
+            (selectedReport === 'godown' || selectedReport === 'supplier') ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-3"
+          )}>
             <div className="space-y-1.5">
               <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
                 <Calendar className="w-3 h-3 text-slate-400" /> Start Date
@@ -538,7 +922,43 @@ export default function Reports() {
               />
             </div>
 
-            <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+            {selectedReport === 'godown' && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                  <Layers className="w-3 h-3 text-slate-400" /> Godown Warehouse
+                </label>
+                <select
+                  value={selectedGodown}
+                  onChange={(e) => setSelectedGodown(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all"
+                >
+                  <option value="All">All Godowns</option>
+                  {godowns.map(g => (
+                    <option key={g.id || g.name} value={g.name}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedReport === 'supplier' && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                  <Users className="w-3 h-3 text-slate-400" /> Supplier Vendor
+                </label>
+                <select
+                  value={selectedSupplier}
+                  onChange={(e) => setSelectedSupplier(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all"
+                >
+                  <option value="All">All Suppliers</option>
+                  {suppliers.map(s => (
+                    <option key={s.id || s.name} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
               <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
                 <Search className="w-3 h-3 text-slate-400" /> Search Parameters
               </label>
@@ -743,7 +1163,7 @@ export default function Reports() {
                           <th className="pb-3.5">Client / Customer Mapping</th>
                           <th className="pb-3.5">Balance Amount</th>
                           <th className="pb-3.5">Ledger Context</th>
-                          <th className="pb-3.5 text-right">Inflow Amount</th>
+                          <th className="pb-3.5 text-right">Received Amount</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -792,26 +1212,9 @@ export default function Reports() {
                               </td>
                               <td className="py-3 text-xs">
                                 {cust ? (
-                                  <div className="flex flex-col gap-1 font-mono text-[10px] font-bold">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-slate-400 uppercase tracking-wider text-[9px]">Opening:</span>
-                                      <span className="text-slate-700 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
-                                        ₹{(cust.openingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-indigo-500 uppercase tracking-wider text-[9px]">Remaining:</span>
-                                      <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                                        ₹{remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-emerald-500 uppercase tracking-wider text-[9px]">Credit Bal:</span>
-                                      <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-                                        ₹{remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                      </span>
-                                    </div>
-                                  </div>
+                                  <span className="text-slate-800 font-bold font-mono bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-xl">
+                                    ₹{remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                  </span>
                                 ) : (
                                   <span className="text-slate-400 italic font-mono">---</span>
                                 )}
@@ -1007,9 +1410,450 @@ export default function Reports() {
                 </div>
               </>
             )}
+
+            {/* Supplier report logs */}
+            {selectedReport === 'supplier' && (
+              <>
+                {/* 1. Sum grid metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Gross Purchases</p>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight mt-2 select-none">
+                      ₹{supplierReportData.summary.totalPurchases.toLocaleString()}
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Overall raw material purchase values.</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-emerald-500">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-emerald-600">Total Paid So Far</p>
+                    <h3 className="text-xl font-black text-emerald-800 tracking-tight mt-2 select-none">
+                      ₹{supplierReportData.summary.totalPaid.toLocaleString()}
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Sum of cleared supplier accounts.</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm border-l-4 border-l-rose-500">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-rose-600">Remaining Pending Dues</p>
+                    <h3 className="text-xl font-black text-rose-800 tracking-tight mt-2 select-none">
+                      ₹{supplierReportData.summary.totalPending.toLocaleString()}
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Current unpaid/pending balances.</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Active Batches</p>
+                    <h3 className="text-xl font-black text-slate-800 tracking-tight mt-2 select-none">
+                      {supplierReportData.summary.totalLots} Lots
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Total batches recorded within dates.</p>
+                  </div>
+                </div>
+
+                {/* 2. Detailed audit grid */}
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
+                    <h3 className="text-sm font-black text-slate-800 uppercase">Supplier Transaction Ledger</h3>
+                    <span className="text-[10px] font-black text-slate-400 uppercase font-mono">{supplierReportData.items.length} lots matched</span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-left text-[10px] text-slate-400 uppercase tracking-widest font-black border-b border-slate-100">
+                          <th className="pb-3.5 px-4">Item Details</th>
+                          <th className="pb-3.5 px-4">Payment Mode</th>
+                          <th className="pb-3.5 px-4">Due Date</th>
+                          <th className="pb-3.5 px-4">Net Amount</th>
+                          <th className="pb-3.5 px-4">Payment Status</th>
+                          <th className="pb-3.5 text-center print:hidden">Payments Desk</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {supplierReportData.items.map((item) => {
+                          const gross = item.totalCost !== undefined && item.totalCost !== null ? Number(item.totalCost) : (Number(item.pricePerMeter) || 0) * (Number(item.quantity) || 0);
+                          const paid = Number(item.paidAmount) || 0;
+                          const pending = Math.max(0, gross - paid);
+                          
+                          let paymentStatusText = 'Unpaid';
+                          if (paid >= gross) {
+                            paymentStatusText = 'Paid';
+                          } else if (paid > 0) {
+                            paymentStatusText = 'Partially Paid';
+                          }
+
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/50 transition-all">
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600">
+                                    <Layers className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-bold text-indigo-600">{item.id}</span>
+                                      <span className="text-[10px] text-slate-400 font-semibold">{item.entryDate}</span>
+                                    </div>
+                                    <p className="text-xs font-bold text-indigo-600">
+                                      {item.fabricType} {item.productGroupName ? `(${item.productGroupName})` : ''}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 font-medium">From: {item.supplierName}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-4 px-4">
+                                <span className={cn(
+                                  "text-xs font-bold px-2.5 py-1 rounded-xl border uppercase tracking-wider",
+                                  item.paymentType === 'Credit' 
+                                    ? "bg-amber-50 text-amber-700 border-amber-100" 
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                )}>
+                                  {item.paymentType || 'Cash'}
+                                </span>
+                              </td>
+                              <td className="py-4 px-4">
+                                {item.dueDate ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-xs font-bold text-rose-600">
+                                      {item.dueDate}
+                                    </span>
+                                    {item.creditDays !== undefined && item.creditDays > 0 ? (
+                                      <span className="text-[10px] text-slate-400 font-semibold">({item.creditDays} days)</span>
+                                    ) : (
+                                      item.dueDate && item.entryDate && (
+                                        <span className="text-[10px] text-slate-400 font-semibold">
+                                          ({Math.round((new Date(item.dueDate).getTime() - new Date(item.entryDate).getTime()) / (1000 * 60 * 60 * 24))} days)
+                                        </span>
+                                      )
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400 font-medium">-</span>
+                                )}
+                              </td>
+                              <td className="py-4 px-4">
+                                <p className="text-sm font-bold text-indigo-600">₹{gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                                {Number(item.quantity) > 0 && (
+                                  <p className="text-[10px] text-slate-500 font-semibold">
+                                    {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="py-4 px-4">
+                                <div className="flex flex-col gap-1 w-fit">
+                                  <span className={cn(
+                                    "text-[9px] font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider text-center",
+                                    paymentStatusText === 'Paid' 
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                                      : paymentStatusText === 'Partially Paid'
+                                      ? "bg-blue-50 text-blue-700 border-blue-100"
+                                      : "bg-amber-50 text-amber-700 border-amber-100"
+                                  )}>
+                                    {paymentStatusText}
+                                  </span>
+                                  <div className="text-[10px] font-medium text-slate-400 divide-x divide-slate-200 flex gap-1.5 items-center">
+                                    <span>Paid: <span className="font-semibold text-slate-600">₹{paid.toLocaleString()}</span></span>
+                                    <span className="pl-1.5">Pending: <span className={cn("font-bold", pending > 0 ? "text-rose-600" : "text-slate-500")}>₹{pending.toLocaleString()}</span></span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-4 px-4 text-center print:hidden">
+                                <button
+                                  onClick={() => openPaymentDialog(item)}
+                                  className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 border-none text-indigo-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
+                                >
+                                  <Coins className="w-3.5 h-3.5" />
+                                  Pay/Manage
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                        {supplierReportData.items.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="text-center py-10">
+                              <p className="text-xs font-black text-slate-400 uppercase select-none">No active supplier records in coordinates</p>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Godown Stock Ledger Section */}
+            {selectedReport === 'godown' && (
+              <>
+                {/* 2. Detailed godown transaction list */}
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
+                    <h3 className="text-sm font-black text-slate-800 uppercase">
+                      Godown Stock Ledger Log ({selectedGodown === 'All' ? 'All Godowns' : selectedGodown})
+                    </h3>
+                    <span className="text-[10px] font-black text-slate-400 uppercase font-mono">{godownReportData.items.length} matched transactions</span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-left text-[10px] text-slate-400 uppercase tracking-widest font-black border-b border-slate-100">
+                          <th className="pb-3.5">Date</th>
+                          <th className="pb-3.5">Item / Model Details</th>
+                          <th className="pb-3.5 text-center">Type</th>
+                          <th className="pb-3.5 text-center font-mono">Quantity</th>
+                          <th className="pb-3.5 text-right">Godown Warehouse</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {godownReportData.items.map((item) => {
+                          const isFinished = item.type === 'Finished Goods' || item.status === 'Finished Goods';
+                          const isDamage = item.type === 'Damage';
+                          const isTransfer = item.type === 'Transfer';
+                          
+                          let typeLabel = 'Work in Progress';
+                          let typeBadgeColor = 'bg-indigo-50 text-indigo-700 border-indigo-100';
+                          if (isFinished) {
+                            typeLabel = 'Finished Goods';
+                            typeBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                          } else if (isDamage) {
+                            typeLabel = 'Damage';
+                            typeBadgeColor = 'bg-rose-50 text-rose-700 border-rose-100';
+                          } else if (isTransfer) {
+                            typeLabel = 'Transfer';
+                            typeBadgeColor = 'bg-sky-50 text-sky-700 border-sky-100';
+                          }
+
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/50 transition-all">
+                              <td className="py-4 text-xs font-semibold text-slate-500 font-mono">
+                                {item.assignedDate}
+                              </td>
+                              <td className="py-4">
+                                <div className="text-xs font-bold text-slate-800">
+                                  {item.modelName || 'Raw Material'} {item.size ? `(${item.size})` : ''}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-medium">ID: {item.id}</div>
+                              </td>
+                              <td className="py-4 text-center">
+                                <span className={`inline-block px-2.5 py-0.5 rounded-lg text-[9px] font-bold uppercase border ${typeBadgeColor}`}>
+                                  {typeLabel}
+                                </span>
+                              </td>
+                              <td className="py-4 text-center text-xs font-black text-slate-800 font-mono">
+                                {item.quantity} {item.finishedPieces !== undefined ? 'pcs' : (item.unit === 'KGs' ? 'KGs' : (item.unit === 'Pieces' ? 'pcs' : 'm'))}
+                              </td>
+                              <td className="py-4 text-right">
+                                <div className="text-xs font-bold text-slate-700">
+                                  {item.unit || 'Unknown'}
+                                </div>
+                                {isTransfer && item.toGodown && (
+                                  <div className="text-[10px] text-indigo-600 font-bold">
+                                    → To: {item.toGodown}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+
+                        {godownReportData.items.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="text-center py-10">
+                              <p className="text-xs font-black text-slate-400 uppercase select-none">No matched godown transactions in coordinates</p>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* Supplier Payment Gate Dialog */}
+      {isPaymentDialogOpen && paymentItem && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+          <div className="bg-white w-full max-w-xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left">
+            <div className="p-8 border-b border-rose-100 bg-gradient-to-r from-rose-50/50 to-amber-50/20 flex items-center justify-between shrink-0">
+              <div>
+                <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Payments desk</span>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-amber-500 animate-bounce" />
+                  Supplier Payment Gate
+                </h3>
+              </div>
+              <button 
+                onClick={() => { setIsPaymentDialogOpen(false); setPaymentItem(null); }}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors border-none bg-transparent cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePaymentSubmit} className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              {(() => {
+                const modalGross = paymentItem.totalCost !== undefined && paymentItem.totalCost !== null ? Number(paymentItem.totalCost) : (paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0);
+                const modalPaid = Number(paymentItem.paidAmount) || 0;
+                const modalRemaining = Math.max(0, modalGross - modalPaid);
+                return (
+                  <>
+                    <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Supplier & Entry</span>
+                        <span className="font-bold text-slate-800">{paymentItem.supplierName} ({paymentItem.id})</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Purchase Date</span>
+                        <span className="font-bold text-slate-600">{paymentItem.entryDate}</span>
+                      </div>
+                      <hr className="border-slate-200/50" />
+                      <div className="flex justify-between font-semibold">
+                        <span className="text-slate-500">Gross Lot Amount</span>
+                        <span className="text-slate-800 font-bold text-sm">₹{modalGross.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-emerald-600 font-semibold">
+                        <span>Paid So Far</span>
+                        <span>₹{modalPaid.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-600 font-extrabold text-sm pt-2 border-t border-dashed border-slate-200">
+                        <span>Remaining Pending Due</span>
+                        <span>₹{modalRemaining.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    {/* Payment Entry Option */}
+                    <div className="space-y-4">
+                      <div className="flex gap-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentDetails({ ...paymentDetails, isFullPayment: true, amountToPay: modalRemaining });
+                          }}
+                          className={`flex-1 p-4 rounded-2xl border text-center transition-all cursor-pointer ${
+                            paymentDetails.isFullPayment 
+                              ? "border-emerald-500 bg-emerald-50/50 text-emerald-800 font-bold" 
+                              : "border-slate-100 hover:border-slate-200 text-slate-500 hover:bg-slate-50 bg-white"
+                          }`}
+                        >
+                          <p className="text-[10px] uppercase tracking-wider font-extrabold mb-1">Pay Remaining Full</p>
+                          <p className="text-sm">₹{modalRemaining.toLocaleString()}</p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentDetails({ ...paymentDetails, isFullPayment: false })}
+                          className={`flex-1 p-4 rounded-2xl border text-center transition-all cursor-pointer ${
+                            !paymentDetails.isFullPayment 
+                              ? "border-indigo-500 bg-indigo-50/50 text-indigo-800 font-bold" 
+                              : "border-slate-100 hover:border-slate-200 text-slate-500 hover:bg-slate-50 bg-white"
+                          }`}
+                        >
+                          <p className="text-[10px] uppercase tracking-wider font-extrabold mb-1">Pay Partial Amount</p>
+                          <p className="text-sm">Customize amount</p>
+                        </button>
+                      </div>
+
+                      {!paymentDetails.isFullPayment && (
+                        <div className="space-y-2">
+                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Specify Amount to Pay (₹)</label>
+                          <input 
+                            required
+                            type="number"
+                            max={modalRemaining}
+                            min={1}
+                            placeholder="0.00"
+                            className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                            value={paymentDetails.amountToPay || ''}
+                            onChange={(e) => setPaymentDetails({ ...paymentDetails, amountToPay: parseFloat(e.target.value) || 0 })}
+                            onWheel={(e) => e.currentTarget.blur()}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {/* Core fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Date</label>
+                  <input 
+                    required
+                    type="date" 
+                    className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-semibold text-slate-700 shadow-sm"
+                    value={paymentDetails.date}
+                    onChange={(e) => setPaymentDetails({ ...paymentDetails, date: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Mode</label>
+                  <select 
+                    className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-semibold text-slate-700 shadow-sm"
+                    value={paymentDetails.paymentMode}
+                    onChange={(e) => setPaymentDetails({ ...paymentDetails, paymentMode: e.target.value })}
+                  >
+                    <option>Bank Transfer</option>
+                    <option>Cash</option>
+                    <option>UPI</option>
+                    <option>Cheque</option>
+                    <option>Credit Card</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Notes / Expense Remarks</label>
+                <textarea 
+                  className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm resize-none"
+                  rows={2}
+                  value={paymentDetails.notes}
+                  onChange={(e) => setPaymentDetails({ ...paymentDetails, notes: e.target.value })}
+                  placeholder="Record payment memo..."
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="pt-4 flex flex-col sm:flex-row gap-3">
+                {Number(paymentItem.paidAmount) > 0 && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (confirm('Are you sure you want to unmark all payments for this lot? This will reset paid amount back to ₹0.')) {
+                        handleUnmarkPaid();
+                      }
+                    }}
+                    className="py-4 px-5 rounded-2xl bg-rose-50 text-rose-600 text-xs font-bold hover:bg-rose-100 transition-colors border border-rose-100 whitespace-nowrap cursor-pointer"
+                  >
+                    Unmark/Reset Payments
+                  </button>
+                )}
+                <div className="flex-1 flex gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => { setIsPaymentDialogOpen(false); setPaymentItem(null); }}
+                    className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors border-none cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={paymentDetails.amountToPay <= 0}
+                    className="flex-1 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-lg shadow-indigo-100 transition-all disabled:opacity-50 border-none cursor-pointer"
+                  >
+                    Record Payment
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

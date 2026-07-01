@@ -56,6 +56,7 @@ export interface InventoryItem {
   amount?: number;
   cgst?: number;
   sgst?: number;
+  igst?: number;
   netAmount?: number;
   productGroupName?: string;
   gstType?: 'GST' | 'NON-GST';
@@ -81,6 +82,8 @@ export default function Inventory() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [reportFormat, setReportFormat] = useState<'excel' | 'pdf'>('excel');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+  const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<Supplier | null>(null);
+  const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
 
   const handleInventoryExcelExport = () => {
     const headers = [
@@ -155,13 +158,13 @@ export default function Inventory() {
     const targetId = supplierId !== undefined ? supplierId : formData.supplierId;
     const selectedSupplier = suppliers.find(s => s && s.id === targetId);
     if (!selectedSupplier || !selectedSupplier.state) {
-      return { cgstPercent: 2.5, sgstPercent: 2.5, locationType: 'Tamil Nadu (Local)' };
+      return { cgstPercent: 2.5, sgstPercent: 2.5, igstPercent: 0, isInterstate: false, locationType: 'Tamil Nadu (Local)' };
     }
     const stateStr = selectedSupplier.state.trim().toLowerCase().replace(/\s+/g, '');
     if (stateStr === 'tamilnadu' || stateStr.includes('tamilnadu')) {
-      return { cgstPercent: 2.5, sgstPercent: 2.5, locationType: 'Tamil Nadu (Local)' };
+      return { cgstPercent: 2.5, sgstPercent: 2.5, igstPercent: 0, isInterstate: false, locationType: 'Tamil Nadu (Local)' };
     } else {
-      return { cgstPercent: 5.0, sgstPercent: 5.0, locationType: 'Interstate' };
+      return { cgstPercent: 0, sgstPercent: 0, igstPercent: 5.0, isInterstate: true, locationType: 'Interstate' };
     }
   };
 
@@ -269,7 +272,7 @@ export default function Inventory() {
   };
 
   const openPaymentDialog = (item: InventoryItem) => {
-    const grossAmount = (item.pricePerMeter || 0) * (item.quantity || 0);
+    const grossAmount = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
     const previousPaid = Number(item.paidAmount) || 0;
     const remainingPending = Math.max(0, grossAmount - previousPaid);
     
@@ -288,7 +291,7 @@ export default function Inventory() {
     e.preventDefault();
     if (!paymentItem) return;
 
-    const grossAmount = (paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0);
+    const grossAmount = paymentItem.totalCost || ((paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0));
     const previousPaid = Number(paymentItem.paidAmount) || 0;
     const amountToPay = Number(paymentDetails.amountToPay) || 0;
     const newTotalPaid = Math.min(grossAmount, previousPaid + amountToPay);
@@ -353,7 +356,7 @@ export default function Inventory() {
     const finalQty = formData.quantity || 0;
 
     const grossTotal = formData.amount !== undefined
-      ? ((formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0))
+      ? ((formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0) + (formData.igst || 0))
       : (formData.totalCost !== undefined ? formData.totalCost : ((formData.pricePerMeter || 0) * finalQty));
       
     const initialPaid = Number(formData.paidAmount) || 0;
@@ -451,8 +454,8 @@ export default function Inventory() {
   const resetForm = () => {
     setEditingId(null);
     setFormData({ 
-      fabricType: products[0]?.description || '', 
-      productGroupName: products[0]?.productGroupName || '',
+      fabricType: '', 
+      productGroupName: '',
       unit: 'Meters',
       entryDate: new Date().toISOString().split('T')[0],
       paidAmount: 0,
@@ -510,6 +513,25 @@ export default function Inventory() {
   }, [items]);
 
   const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'];
+
+  const paymentItemNetAmount = paymentItem ? (paymentItem.totalCost || ((paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0))) : 0;
+
+  const handlePurIdClick = (item: InventoryItem) => {
+    const found = suppliers.find(s => s && (s.id === item.supplierId || s.name === item.supplierName || s.companyName === item.supplierName));
+    if (found) {
+      setSelectedSupplierDetails(found);
+    } else {
+      setSelectedSupplierDetails({
+        id: item.supplierId || 'N/A',
+        name: item.supplierName || 'Unknown Supplier',
+        companyName: item.supplierName || 'Unknown Supplier',
+        address: 'No detailed address found for this supplier.',
+        gstNumber: 'N/A',
+        createdAt: item.createdAt || new Date().toISOString()
+      });
+    }
+    setIsSupplierModalOpen(true);
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -643,17 +665,17 @@ export default function Inventory() {
               <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
                 <th className="px-6 py-4">Item Details</th>
                 <th className="px-6 py-4">Payment Mode</th>
-                <th className="px-6 py-4">Costing & Total</th>
-                <th className="px-6 py-4">Stock</th>
+                <th className="px-6 py-4">Due Date</th>
+                <th className="px-6 py-4">Net Amount</th>
                 <th className="px-6 py-4">Payment Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {displayedItems.map((item) => {
-                const totalCost = (item.pricePerMeter || 0) * (item.quantity || 0);
+                const netAmount = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
                 const paidAmt = Number(item.paidAmount) || 0;
-                const pendingAmt = Math.max(0, totalCost - paidAmt);
+                const pendingAmt = Math.max(0, netAmount - paidAmt);
                 
                 return (
                   <tr 
@@ -673,7 +695,13 @@ export default function Inventory() {
                           <Layers className="w-5 h-5" />
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-slate-800">{item.id}</p>
+                          <button
+                            onClick={() => handlePurIdClick(item)}
+                            className="text-sm font-bold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none text-left transition-colors cursor-pointer block"
+                            title="Click to view supplier details"
+                          >
+                            {item.id}
+                          </button>
                           <p className="text-xs font-bold text-indigo-600">
                             {item.fabricType} {item.productGroupName ? `(${item.productGroupName})` : ''}
                           </p>
@@ -687,38 +715,35 @@ export default function Inventory() {
                         <span className={cn(
                           "text-xs font-bold px-2 py-0.5 rounded-lg w-fit border uppercase tracking-wider",
                           item.paymentType === 'Credit' 
-                            ? "bg-amber-50 text-amber-700 border-amber-100" 
+                             ? "bg-amber-50 text-amber-700 border-amber-100" 
                             : "bg-emerald-50 text-emerald-700 border-emerald-100"
                         )}>
                           {item.paymentType || 'Cash'}
                         </span>
-                        {item.paymentType === 'Credit' && item.dueDate && (
-                          <span className="text-[10px] text-slate-500 font-semibold">
-                            Due: <span className="text-rose-600 font-bold">{item.dueDate}</span>
-                            {item.creditDays !== undefined && ` (${item.creditDays}d)`}
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      {item.dueDate && (item.paymentType === 'Credit' || (item.creditDays !== undefined && item.creditDays > 0) || pendingAmt > 0) ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className={cn(
+                            "text-sm font-bold",
+                            pendingAmt > 0 ? "text-rose-600 animate-pulse" : "text-slate-600"
+                          )}>
+                            {item.dueDate}
                           </span>
-                        )}
-                      </div>
+                          {item.creditDays !== undefined && item.creditDays > 0 && (
+                            <span className="text-[10px] text-slate-400 font-semibold">({item.creditDays} days)</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium">-</span>
+                      )}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="text-sm font-bold text-slate-800">₹{item.pricePerMeter.toFixed(2)}/{item.unit === 'KGs' ? 'kg' : (item.unit === 'Meters' ? 'm' : 'pc')}</p>
-                      <p className="text-xs font-black text-slate-500">Total: ₹{totalCost.toLocaleString('en-IN')}</p>
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="flex flex-col gap-1">
-                        <p className={cn(
-                          "text-sm font-bold",
-                          item.quantity <= threshold ? "text-rose-600" : "text-slate-800"
-                        )}>{item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}</p>
-                        <span className={cn(
-                          "text-[9px] px-1.5 py-0.5 rounded-md font-bold w-fit uppercase",
-                          item.quantity > threshold ? "bg-emerald-50 text-emerald-600" : 
-                          item.quantity > 0 ? "bg-rose-50 text-rose-600 animate-pulse" : 
-                          "bg-slate-900 text-white"
-                        )}>
-                          {item.quantity > threshold ? 'In Stock' : item.quantity > 0 ? 'Low Stock' : 'Out of Stock'}
-                        </span>
-                      </div>
+                      <p className="text-sm font-bold text-indigo-600">₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      <p className="text-[10px] text-slate-500 font-semibold">
+                        {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
+                      </p>
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex flex-col gap-1 w-fit">
@@ -763,11 +788,12 @@ export default function Inventory() {
                             setFormData({
                               ...item,
                               rawMaterialType: isYarnItem ? 'yarn' : (isJariItem ? 'jari' : 'cloth'),
-                              amount: item.amount || totalVal - (item.cgst || 0) - (item.sgst || 0),
-                              cgst: item.cgst,
-                              sgst: item.sgst,
+                              amount: item.amount || totalVal - (item.cgst || 0) - (item.sgst || 0) - (item.igst || 0),
+                              cgst: item.cgst || 0,
+                              sgst: item.sgst || 0,
+                              igst: item.igst || 0,
                               totalCost: totalVal,
-                              gstType: item.gstType || ((item.cgst || item.sgst) ? 'GST' : 'NON-GST')
+                              gstType: item.gstType || ((item.cgst || item.sgst || item.igst) ? 'GST' : 'NON-GST')
                             }); 
                             setIsFormOpen(true); 
                           }}
@@ -826,25 +852,35 @@ export default function Inventory() {
                     value={formData.supplierId || ''}
                     onChange={(e) => {
                       const suppId = e.target.value;
-                      const { cgstPercent, sgstPercent } = getGSTPercentInline(suppId);
+                      const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(suppId);
                       const isGST = (formData.gstType || 'GST') === 'GST';
                       let nextCgst = formData.cgst;
                       let nextSgst = formData.sgst;
+                      let nextIgst = formData.igst;
 
                       if (isGST) {
                         const amt = formData.amount || 0;
-                        nextCgst = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                        nextSgst = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                        if (isInterstate) {
+                          nextCgst = 0;
+                          nextSgst = 0;
+                          nextIgst = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                        } else {
+                          nextCgst = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                          nextSgst = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                          nextIgst = 0;
+                        }
                       } else {
                         nextCgst = 0;
                         nextSgst = 0;
+                        nextIgst = 0;
                       }
 
                       setFormData({
                         ...formData,
                         supplierId: suppId,
                         cgst: nextCgst,
-                        sgst: nextSgst
+                        sgst: nextSgst,
+                        igst: nextIgst
                       });
                     }}
                   >
@@ -887,8 +923,8 @@ export default function Inventory() {
                           setFormData({ 
                             ...formData, 
                             rawMaterialType: 'cloth',
-                            fabricType: needDefault ? (products[0]?.description || '') : formData.fabricType,
-                            productGroupName: needDefault ? (products[0]?.productGroupName || '') : formData.productGroupName
+                            fabricType: needDefault ? '' : formData.fabricType,
+                            productGroupName: needDefault ? '' : formData.productGroupName
                           });
                         }}
                         className="sr-only"
@@ -919,15 +955,23 @@ export default function Inventory() {
                         value="yarn"
                         checked={formData.rawMaterialType === 'yarn'}
                         onChange={() => {
-                          const { cgstPercent, sgstPercent } = getGSTPercentInline(formData.supplierId);
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
                           const amt = formData.amount || 0;
-                          const calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                          const calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                          let calculatedCGST = 0;
+                          let calculatedSGST = 0;
+                          let calculatedIGST = 0;
+                          if (isInterstate) {
+                            calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                          } else {
+                            calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                            calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                          }
                           setFormData({ 
                             ...formData, 
                             rawMaterialType: 'yarn',
                             cgst: calculatedCGST,
-                            sgst: calculatedSGST
+                            sgst: calculatedSGST,
+                            igst: calculatedIGST
                           });
                         }}
                         className="sr-only"
@@ -958,19 +1002,27 @@ export default function Inventory() {
                         value="jari"
                         checked={formData.rawMaterialType === 'jari'}
                         onChange={() => {
-                          const { cgstPercent, sgstPercent } = getGSTPercentInline(formData.supplierId);
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
                           const amt = formData.amount || 0;
-                          const calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                          const calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                          let calculatedCGST = 0;
+                          let calculatedSGST = 0;
+                          let calculatedIGST = 0;
+                          if (isInterstate) {
+                            calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                          } else {
+                            calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                            calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                          }
                           const isYarn = formData.rawMaterialType === 'yarn';
                           const needDefault = isYarn || !formData.fabricType;
                           setFormData({ 
                             ...formData, 
                             rawMaterialType: 'jari',
-                            fabricType: needDefault ? (products[0]?.description || '') : formData.fabricType,
-                            productGroupName: needDefault ? (products[0]?.productGroupName || '') : formData.productGroupName,
+                            fabricType: needDefault ? '' : formData.fabricType,
+                            productGroupName: needDefault ? '' : formData.productGroupName,
                             cgst: calculatedCGST,
-                            sgst: calculatedSGST
+                            sgst: calculatedSGST,
+                            igst: calculatedIGST
                           });
                         }}
                         className="sr-only"
@@ -1085,9 +1137,10 @@ export default function Inventory() {
                           <select 
                             required
                             className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                            value={formData.productGroupName || 'COLOUR BASANA'}
+                            value={formData.productGroupName || ''}
                             onChange={(e) => setFormData({ ...formData, productGroupName: e.target.value })}
                           >
+                            <option value="" disabled>Select Product Group Name</option>
                             <option value="COLOUR BASANA">COLOUR BASANA</option>
                             <option value="GREY CLOTH">GREY CLOTH</option>
                             <option value="COTTON CLOTH">COTTON CLOTH</option>
@@ -1120,16 +1173,24 @@ export default function Inventory() {
                             checked={(formData.gstType || 'GST') === 'GST'}
                             onChange={() => {
                               const amt = formData.amount || 0;
-                              const { cgstPercent, sgstPercent } = getGSTPercentInline(formData.supplierId);
-                              const calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                              const calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                              const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
+                              let calculatedCGST = 0;
+                              let calculatedSGST = 0;
+                              let calculatedIGST = 0;
+                              if (isInterstate) {
+                                calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                              } else {
+                                calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                                calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                              }
                               const qty = formData.quantity || 0;
-                              const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST).toFixed(2));
+                              const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
                               setFormData({
                                 ...formData,
                                 gstType: 'GST',
                                 cgst: calculatedCGST,
                                 sgst: calculatedSGST,
+                                igst: calculatedIGST,
                                 totalCost: calculatedTotalCost,
                                 pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
                               });
@@ -1169,6 +1230,7 @@ export default function Inventory() {
                                 gstType: 'NON-GST',
                                 cgst: 0,
                                 sgst: 0,
+                                igst: 0,
                                 totalCost: amt,
                                 pricePerMeter: qty > 0 ? (amt / qty) : (formData.pricePerMeter || 0)
                               });
@@ -1201,16 +1263,26 @@ export default function Inventory() {
                         onChange={(e) => {
                           const amt = parseFloat(e.target.value) || 0;
                           const isGST = (formData.gstType || 'GST') === 'GST';
-                          const { cgstPercent, sgstPercent } = isGST ? getGSTPercentInline(formData.supplierId) : { cgstPercent: 0, sgstPercent: 0 };
-                          const calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                          const calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
-                          const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST).toFixed(2));
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getGSTPercentInline(formData.supplierId) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
+                          let calculatedCGST = 0;
+                          let calculatedSGST = 0;
+                          let calculatedIGST = 0;
+                          if (isGST) {
+                            if (isInterstate) {
+                              calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                            } else {
+                              calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                              calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                            }
+                          }
+                          const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
                           const qty = formData.quantity || 0;
                           setFormData({
                             ...formData,
                             amount: amt,
                             cgst: calculatedCGST,
                             sgst: calculatedSGST,
+                            igst: calculatedIGST,
                             totalCost: calculatedTotalCost,
                             pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
                           });
@@ -1221,62 +1293,95 @@ export default function Inventory() {
 
                     {(formData.gstType || 'GST') === 'GST' && (
                       <>
-                        <div className="space-y-2 animate-in fade-in duration-200">
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
-                            CGST ({getGSTPercentInline(formData.supplierId).cgstPercent}%) (₹)
-                          </label>
-                          <input 
-                            type="number" 
-                            placeholder="0.00"
-                            className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                            value={formData.cgst !== undefined ? formData.cgst : ''}
-                            onChange={(e) => {
-                              const cg = parseFloat(e.target.value) || 0;
-                              const subAmt = formData.amount || 0;
-                              const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
-                              const qty = formData.quantity || 0;
-                              setFormData({
-                                ...formData,
-                                cgst: cg,
-                                totalCost: calculatedTotalCost,
-                                pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                              });
-                            }}
-                            onWheel={(e) => e.currentTarget.blur()}
-                          />
-                        </div>
+                        {getGSTPercentInline(formData.supplierId).isInterstate ? (
+                          <div className="space-y-2 animate-in fade-in duration-200">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
+                              IGST ({getGSTPercentInline(formData.supplierId).igstPercent}%) (₹)
+                            </label>
+                            <input 
+                              type="number" 
+                              placeholder="0.00"
+                              className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                              value={formData.igst !== undefined ? formData.igst : ''}
+                              onChange={(e) => {
+                                const ig = parseFloat(e.target.value) || 0;
+                                const subAmt = formData.amount || 0;
+                                const calculatedTotalCost = parseFloat((subAmt + ig).toFixed(2));
+                                const qty = formData.quantity || 0;
+                                setFormData({
+                                  ...formData,
+                                  igst: ig,
+                                  cgst: 0,
+                                  sgst: 0,
+                                  totalCost: calculatedTotalCost,
+                                  pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                });
+                              }}
+                              onWheel={(e) => e.currentTarget.blur()}
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="space-y-2 animate-in fade-in duration-200">
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                                CGST ({getGSTPercentInline(formData.supplierId).cgstPercent}%) (₹)
+                              </label>
+                              <input 
+                                type="number" 
+                                placeholder="0.00"
+                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                value={formData.cgst !== undefined ? formData.cgst : ''}
+                                onChange={(e) => {
+                                  const cg = parseFloat(e.target.value) || 0;
+                                  const subAmt = formData.amount || 0;
+                                  const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
+                                  const qty = formData.quantity || 0;
+                                  setFormData({
+                                    ...formData,
+                                    cgst: cg,
+                                    igst: 0,
+                                    totalCost: calculatedTotalCost,
+                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                  });
+                                }}
+                                onWheel={(e) => e.currentTarget.blur()}
+                              />
+                            </div>
 
-                        <div className="space-y-2 animate-in fade-in duration-200">
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
-                            SGST ({getGSTPercentInline(formData.supplierId).sgstPercent}%) (₹)
-                          </label>
-                          <input 
-                            type="number" 
-                            placeholder="0.00"
-                            className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                            value={formData.sgst !== undefined ? formData.sgst : ''}
-                            onChange={(e) => {
-                              const sg = parseFloat(e.target.value) || 0;
-                              const subAmt = formData.amount || 0;
-                              const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
-                              const qty = formData.quantity || 0;
-                              setFormData({
-                                ...formData,
-                                sgst: sg,
-                                totalCost: calculatedTotalCost,
-                                pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                              });
-                            }}
-                            onWheel={(e) => e.currentTarget.blur()}
-                          />
-                        </div>
+                            <div className="space-y-2 animate-in fade-in duration-200">
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                                SGST ({getGSTPercentInline(formData.supplierId).sgstPercent}%) (₹)
+                              </label>
+                              <input 
+                                type="number" 
+                                placeholder="0.00"
+                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                value={formData.sgst !== undefined ? formData.sgst : ''}
+                                onChange={(e) => {
+                                  const sg = parseFloat(e.target.value) || 0;
+                                  const subAmt = formData.amount || 0;
+                                  const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
+                                  const qty = formData.quantity || 0;
+                                  setFormData({
+                                    ...formData,
+                                    sgst: sg,
+                                    igst: 0,
+                                    totalCost: calculatedTotalCost,
+                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                  });
+                                }}
+                                onWheel={(e) => e.currentTarget.blur()}
+                              />
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
 
                     <div className="space-y-2 animate-in fade-in duration-200">
                       <label className="text-[11px] font-bold text-indigo-600 uppercase tracking-widest px-1">Net Amount (₹)</label>
                       <div className="w-full bg-indigo-50 border border-indigo-100 rounded-2xl py-4 px-6 text-sm font-black text-indigo-700 shadow-sm flex items-center gap-2 h-[54px]">
-                        ₹ {((formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        ₹ {((formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0) + (formData.igst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </div>
                     </div>
 
@@ -1422,9 +1527,10 @@ export default function Inventory() {
                       <select 
                         required
                         className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                        value={formData.productGroupName || 'COLOUR BASANA'}
+                        value={formData.productGroupName || ''}
                         onChange={(e) => setFormData({ ...formData, productGroupName: e.target.value })}
                       >
+                        <option value="" disabled>Select Product Group Name</option>
                         <option value="COLOUR BASANA">COLOUR BASANA</option>
                         <option value="GREY CLOTH">GREY CLOTH</option>
                         <option value="COTTON CLOTH">COTTON CLOTH</option>
@@ -1487,16 +1593,24 @@ export default function Inventory() {
                             checked={(formData.gstType || 'GST') === 'GST'}
                             onChange={() => {
                               const amt = formData.amount || 0;
-                              const { cgstPercent, sgstPercent } = getGSTPercentInline(formData.supplierId);
-                              const calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                              const calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                              const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
+                              let calculatedCGST = 0;
+                              let calculatedSGST = 0;
+                              let calculatedIGST = 0;
+                              if (isInterstate) {
+                                calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                              } else {
+                                calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                                calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                              }
                               const qty = formData.quantity || 0;
-                              const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST).toFixed(2));
+                              const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
                               setFormData({
                                 ...formData,
                                 gstType: 'GST',
                                 cgst: calculatedCGST,
                                 sgst: calculatedSGST,
+                                igst: calculatedIGST,
                                 totalCost: calculatedTotalCost,
                                 pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
                               });
@@ -1536,6 +1650,7 @@ export default function Inventory() {
                                 gstType: 'NON-GST',
                                 cgst: 0,
                                 sgst: 0,
+                                igst: 0,
                                 totalCost: amt,
                                 pricePerMeter: qty > 0 ? (amt / qty) : (formData.pricePerMeter || 0)
                               });
@@ -1568,16 +1683,26 @@ export default function Inventory() {
                         onChange={(e) => {
                           const amt = parseFloat(e.target.value) || 0;
                           const isGST = (formData.gstType || 'GST') === 'GST';
-                          const { cgstPercent, sgstPercent } = isGST ? getGSTPercentInline(formData.supplierId) : { cgstPercent: 0, sgstPercent: 0 };
-                          const calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                          const calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
-                          const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST).toFixed(2));
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getGSTPercentInline(formData.supplierId) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
+                          let calculatedCGST = 0;
+                          let calculatedSGST = 0;
+                          let calculatedIGST = 0;
+                          if (isGST) {
+                            if (isInterstate) {
+                              calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                            } else {
+                              calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                              calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                            }
+                          }
+                          const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
                           const qty = formData.quantity || 0;
                           setFormData({
                             ...formData,
                             amount: amt,
                             cgst: calculatedCGST,
                             sgst: calculatedSGST,
+                            igst: calculatedIGST,
                             totalCost: calculatedTotalCost,
                             pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
                           });
@@ -1588,55 +1713,88 @@ export default function Inventory() {
 
                     {(formData.gstType || 'GST') === 'GST' && (
                       <>
-                        <div className="space-y-2 animate-in fade-in duration-200">
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
-                            CGST ({getGSTPercentInline(formData.supplierId).cgstPercent}%) (₹)
-                          </label>
-                          <input 
-                            type="number" 
-                            placeholder="0.00"
-                            className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                            value={formData.cgst !== undefined ? formData.cgst : ''}
-                            onChange={(e) => {
-                              const cg = parseFloat(e.target.value) || 0;
-                              const subAmt = formData.amount || 0;
-                              const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
-                              const qty = formData.quantity || 0;
-                              setFormData({
-                                ...formData,
-                                cgst: cg,
-                                totalCost: calculatedTotalCost,
-                                pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                              });
-                            }}
-                            onWheel={(e) => e.currentTarget.blur()}
-                          />
-                        </div>
+                        {getGSTPercentInline(formData.supplierId).isInterstate ? (
+                          <div className="space-y-2 animate-in fade-in duration-200">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
+                              IGST ({getGSTPercentInline(formData.supplierId).igstPercent}%) (₹)
+                            </label>
+                            <input 
+                              type="number" 
+                              placeholder="0.00"
+                              className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                              value={formData.igst !== undefined ? formData.igst : ''}
+                              onChange={(e) => {
+                                const ig = parseFloat(e.target.value) || 0;
+                                const subAmt = formData.amount || 0;
+                                const calculatedTotalCost = parseFloat((subAmt + ig).toFixed(2));
+                                const qty = formData.quantity || 0;
+                                setFormData({
+                                  ...formData,
+                                  igst: ig,
+                                  cgst: 0,
+                                  sgst: 0,
+                                  totalCost: calculatedTotalCost,
+                                  pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                });
+                              }}
+                              onWheel={(e) => e.currentTarget.blur()}
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="space-y-2 animate-in fade-in duration-200">
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
+                                CGST ({getGSTPercentInline(formData.supplierId).cgstPercent}%) (₹)
+                              </label>
+                              <input 
+                                type="number" 
+                                placeholder="0.00"
+                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                value={formData.cgst !== undefined ? formData.cgst : ''}
+                                onChange={(e) => {
+                                  const cg = parseFloat(e.target.value) || 0;
+                                  const subAmt = formData.amount || 0;
+                                  const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
+                                  const qty = formData.quantity || 0;
+                                  setFormData({
+                                    ...formData,
+                                    cgst: cg,
+                                    igst: 0,
+                                    totalCost: calculatedTotalCost,
+                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                  });
+                                }}
+                                onWheel={(e) => e.currentTarget.blur()}
+                              />
+                            </div>
 
-                        <div className="space-y-2 animate-in fade-in duration-200">
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
-                            SGST ({getGSTPercentInline(formData.supplierId).sgstPercent}%) (₹)
-                          </label>
-                          <input 
-                            type="number" 
-                            placeholder="0.00"
-                            className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                            value={formData.sgst !== undefined ? formData.sgst : ''}
-                            onChange={(e) => {
-                              const sg = parseFloat(e.target.value) || 0;
-                              const subAmt = formData.amount || 0;
-                              const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
-                              const qty = formData.quantity || 0;
-                              setFormData({
-                                ...formData,
-                                sgst: sg,
-                                totalCost: calculatedTotalCost,
-                                pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                              });
-                            }}
-                            onWheel={(e) => e.currentTarget.blur()}
-                          />
-                        </div>
+                            <div className="space-y-2 animate-in fade-in duration-200">
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
+                                SGST ({getGSTPercentInline(formData.supplierId).sgstPercent}%) (₹)
+                              </label>
+                              <input 
+                                type="number" 
+                                placeholder="0.00"
+                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                value={formData.sgst !== undefined ? formData.sgst : ''}
+                                onChange={(e) => {
+                                  const sg = parseFloat(e.target.value) || 0;
+                                  const subAmt = formData.amount || 0;
+                                  const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
+                                  const qty = formData.quantity || 0;
+                                  setFormData({
+                                    ...formData,
+                                    sgst: sg,
+                                    igst: 0,
+                                    totalCost: calculatedTotalCost,
+                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                  });
+                                }}
+                                onWheel={(e) => e.currentTarget.blur()}
+                              />
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
 
@@ -1645,7 +1803,7 @@ export default function Inventory() {
                         Net Amount (Total Cost) (₹)
                       </label>
                       <div className="w-full bg-indigo-50 border border-indigo-100 rounded-2xl py-4 px-6 text-sm font-black text-indigo-700 shadow-sm flex items-center gap-2 h-[54px]">
-                        ₹ {((formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        ₹ {((formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0) + (formData.igst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </div>
                     </div>
 
@@ -1723,7 +1881,7 @@ export default function Inventory() {
                 <hr className="border-slate-200/50" />
                 <div className="flex justify-between font-semibold">
                   <span className="text-slate-500">Gross Lot Amount</span>
-                  <span className="text-slate-800 font-bold text-sm">₹{((paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0)).toLocaleString('en-IN')}</span>
+                  <span className="text-slate-800 font-bold text-sm">₹{paymentItemNetAmount.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex justify-between text-emerald-600 font-semibold">
                   <span>Paid So Far</span>
@@ -1731,7 +1889,7 @@ export default function Inventory() {
                 </div>
                 <div className="flex justify-between text-rose-600 font-extrabold text-sm pt-2 border-t border-dashed border-slate-200">
                   <span>Remaining Pending Due</span>
-                  <span>₹{Math.max(0, ((paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0)) - (paymentItem.paidAmount || 0)).toLocaleString('en-IN')}</span>
+                  <span>₹{Math.max(0, paymentItemNetAmount - (paymentItem.paidAmount || 0)).toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
@@ -1741,7 +1899,7 @@ export default function Inventory() {
                   <button
                     type="button"
                     onClick={() => {
-                      const remain = Math.max(0, ((paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0)) - (paymentItem.paidAmount || 0));
+                      const remain = Math.max(0, paymentItemNetAmount - (paymentItem.paidAmount || 0));
                       setPaymentDetails({ ...paymentDetails, isFullPayment: true, amountToPay: remain });
                     }}
                     className={cn(
@@ -1752,7 +1910,7 @@ export default function Inventory() {
                     )}
                   >
                     <p className="text-[10px] uppercase tracking-wider font-extrabold mb-1">Pay Remaining Full</p>
-                    <p className="text-sm">₹{Math.max(0, ((paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0)) - (paymentItem.paidAmount || 0)).toLocaleString()}</p>
+                    <p className="text-sm">₹{Math.max(0, paymentItemNetAmount - (paymentItem.paidAmount || 0)).toLocaleString()}</p>
                   </button>
                   <button
                     type="button"
@@ -1775,7 +1933,7 @@ export default function Inventory() {
                     <input 
                       required
                       type="number"
-                      max={Math.max(0, ((paymentItem.pricePerMeter || 0) * (paymentItem.quantity || 0)) - (paymentItem.paidAmount || 0))}
+                      max={Math.max(0, paymentItemNetAmount - (paymentItem.paidAmount || 0))}
                       min={1}
                       placeholder="0.00"
                       className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
@@ -2067,7 +2225,16 @@ export default function Inventory() {
                           const balance = Math.max(0, totalCost - paidAmt);
                           return (
                             <tr key={item.id} className="text-slate-700 hover:bg-slate-50/50">
-                              <td className="py-2.5 font-mono text-[10px] font-bold">{item.id}</td>
+                              <td className="py-2.5 font-mono text-[10px] font-bold">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePurIdClick(item)}
+                                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none text-left cursor-pointer font-mono"
+                                  title="Click to view supplier details"
+                                >
+                                  {item.id}
+                                </button>
+                              </td>
                               <td className="py-2.5 font-extrabold text-slate-800">{item.fabricType}</td>
                               <td className="py-2.5 text-right font-bold">{item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}</td>
                               <td className="py-2.5 text-right">₹{item.pricePerMeter}</td>
@@ -2100,6 +2267,188 @@ export default function Inventory() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {isSupplierModalOpen && selectedSupplierDetails && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto no-print">
+          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-8 py-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-lg uppercase tracking-tight">Supplier Profile</h3>
+                  <p className="text-xs text-slate-500 font-medium">{selectedSupplierDetails.id !== 'N/A' ? `ID: ${selectedSupplierDetails.id}` : 'Temporary Supplier Profile'}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsSupplierModalOpen(false)}
+                className="p-2 rounded-xl hover:bg-slate-200 text-slate-400 hover:text-slate-700 font-bold transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-8 overflow-y-auto space-y-8 flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Left Column: Basic & Contact Info */}
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 mb-3">General Information</h4>
+                    <div className="bg-[#f8faff] rounded-2xl p-5 space-y-4 shadow-sm">
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Supplier Name</p>
+                        <p className="text-base font-extrabold text-slate-800">{selectedSupplierDetails.name || 'N/A'}</p>
+                      </div>
+                      {selectedSupplierDetails.companyName && selectedSupplierDetails.companyName !== selectedSupplierDetails.name && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">Company Name</p>
+                          <p className="text-sm font-bold text-slate-700">{selectedSupplierDetails.companyName}</p>
+                        </div>
+                      )}
+                      {selectedSupplierDetails.contactPerson && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">Contact Person</p>
+                          <p className="text-sm font-semibold text-slate-600">{selectedSupplierDetails.contactPerson}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 mb-3">Contact Details</h4>
+                    <div className="bg-[#f8faff] rounded-2xl p-5 space-y-4 shadow-sm">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">Phone / Mobile</p>
+                          <p className="text-sm font-bold text-slate-800">{selectedSupplierDetails.phone || selectedSupplierDetails.mobileNumber || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">Email</p>
+                          <p className="text-sm font-bold text-slate-800 truncate" title={selectedSupplierDetails.email}>{selectedSupplierDetails.email || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">Address</p>
+                        <p className="text-sm font-semibold text-slate-700 leading-relaxed">
+                          {selectedSupplierDetails.address || 'No address specified'}
+                          {selectedSupplierDetails.district && `, ${selectedSupplierDetails.district}`}
+                          {selectedSupplierDetails.state && `, ${selectedSupplierDetails.state}`}
+                          {selectedSupplierDetails.pincode && ` - ${selectedSupplierDetails.pincode}`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 mb-3">Registration & Terms</h4>
+                    <div className="bg-[#f8faff] rounded-2xl p-5 space-y-4 shadow-sm">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">GST Number</p>
+                          <span className="inline-block bg-indigo-50 text-indigo-700 font-mono text-xs font-bold px-2.5 py-1 rounded-lg mt-1 border border-indigo-100 uppercase">
+                            {selectedSupplierDetails.gstNumber || 'N/A'}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">Payment Terms</p>
+                          <span className="inline-block bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg mt-1 border border-slate-200">
+                            {selectedSupplierDetails.paymentTerms || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                      {selectedSupplierDetails.notes && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">Internal Notes</p>
+                          <p className="text-xs font-medium text-slate-500 italic mt-1">{selectedSupplierDetails.notes}</p>
+                        </div>
+                      )}
+                      {selectedSupplierDetails.opBalance !== undefined && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">Opening Balance</p>
+                          <p className="text-sm font-bold text-slate-800 mt-0.5">₹{selectedSupplierDetails.opBalance.toLocaleString('en-IN')}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Supplier Purchase History (Lots Supplied) */}
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 mb-3">Lots Supplied History</h4>
+                    <div className="bg-[#f8faff] rounded-2xl p-5 shadow-sm max-h-[500px] overflow-y-auto">
+                      {items.filter(item => 
+                        item.supplierId === selectedSupplierDetails.id || 
+                        item.supplierName === selectedSupplierDetails.name || 
+                        item.supplierName === selectedSupplierDetails.companyName
+                      ).length === 0 ? (
+                        <div className="py-12 text-center text-slate-400">
+                          <Package className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                          <p className="text-xs font-bold">No purchase lots recorded for this supplier.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {items.filter(item => 
+                            item.supplierId === selectedSupplierDetails.id || 
+                            item.supplierName === selectedSupplierDetails.name || 
+                            item.supplierName === selectedSupplierDetails.companyName
+                          ).map((item) => {
+                            const lotCost = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
+                            const lotPaid = Number(item.paidAmount) || 0;
+                            const lotPending = Math.max(0, lotCost - lotPaid);
+                            const lotStatus = lotPaid >= lotCost ? 'Paid' : (lotPaid > 0 ? 'Partially Paid' : 'Unpaid');
+
+                            return (
+                              <div key={item.id} className="bg-white rounded-xl p-4 border border-slate-100 flex justify-between items-center hover:border-indigo-100 transition-colors">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-xs font-extrabold text-slate-800">{item.id}</span>
+                                    <span className="text-[10px] text-slate-400 font-medium">{item.entryDate}</span>
+                                  </div>
+                                  <p className="text-xs font-bold text-indigo-600">
+                                    {item.fabricType} {item.productGroupName ? `(${item.productGroupName})` : ''}
+                                  </p>
+                                </div>
+                                <div className="text-right space-y-1">
+                                  <p className="text-xs font-bold text-slate-800">₹{lotCost.toLocaleString('en-IN')}</p>
+                                  <span className={cn(
+                                    "inline-block text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider",
+                                    lotStatus === 'Paid' ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
+                                    lotStatus === 'Partially Paid' ? "bg-amber-50 text-amber-700 border border-amber-100" :
+                                    "bg-rose-50 text-rose-700 border border-rose-100"
+                                  )}>
+                                    {lotStatus}
+                                  </span>
+                                  {lotPending > 0 && (
+                                    <p className="text-[9px] text-rose-600 font-bold">Due: ₹{lotPending.toLocaleString('en-IN')}</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsSupplierModalOpen(false)}
+                className="py-2.5 px-6 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold transition-all text-sm shadow-md"
+              >
+                Close Profile
+              </button>
             </div>
           </div>
         </div>

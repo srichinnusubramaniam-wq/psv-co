@@ -15,7 +15,8 @@ import {
   Monitor, 
   Factory,
   Users,
-  Warehouse
+  Warehouse,
+  Download
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { STATES_AND_DISTRICTS } from '@/src/data/indiaData';
@@ -767,6 +768,109 @@ export default function ProductMaster() {
     setItemToDelete(null);
   };
 
+  const handleExportMaster = () => {
+    let headers: string[] = [];
+    let rows: string[][] = [];
+    const filename = `Master_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`;
+
+    if (activeTab === 'models') {
+      headers = ['Model ID', 'Model Name', 'Code', 'Description', 'Product Group', 'HSN Code', 'Base Price', 'Category'];
+      rows = products.map(p => [
+        p.id || '',
+        p.name || '',
+        p.code || '',
+        p.description || '',
+        p.productGroupName || '',
+        p.hsn || '',
+        p.basePrice !== undefined ? String(p.basePrice) : '',
+        p.category || ''
+      ]);
+    } else if (activeTab === 'styles') {
+      headers = ['Style ID', 'Style Name'];
+      rows = styles.map(s => [
+        s.id || '',
+        s.name || ''
+      ]);
+    } else if (activeTab === 'units') {
+      headers = ['Godown ID', 'Godown Name', 'Location', 'Supervisor', 'Capacity'];
+      rows = units.map(u => [
+        u.id || '',
+        u.name || '',
+        u.location || '',
+        u.supervisor || '',
+        u.capacity || ''
+      ]);
+    } else if (activeTab === 'suppliers') {
+      headers = ['Supplier ID', 'Supplier Name', 'Company Name', 'Contact Person', 'Phone', 'Mobile', 'Email', 'Address', 'GSTIN', 'Pincode', 'State', 'District', 'Opening Balance'];
+      rows = suppliers.map(s => [
+        s.id || '',
+        s.name || '',
+        s.companyName || '',
+        s.contactPerson || '',
+        s.phone || '',
+        s.mobileNumber || '',
+        s.email || '',
+        s.address || '',
+        s.gstNumber || '',
+        s.pincode || '',
+        s.state || '',
+        s.district || '',
+        s.opBalance !== undefined ? String(s.opBalance) : '0'
+      ]);
+    } else if (activeTab === 'customers') {
+      headers = ['Customer ID', 'Customer Name', 'Phone', 'Mobile', 'Email', 'Address', 'Pincode', 'State', 'District', 'GSTIN', 'TCS Applicable', 'Opening Balance'];
+      rows = customers.map(c => [
+        c.id || '',
+        c.name || '',
+        c.phone || '',
+        c.mobileNumber || '',
+        c.email || '',
+        c.address || '',
+        c.pincode || '',
+        c.state || '',
+        c.district || '',
+        c.gstNumber || '',
+        c.tcsApplicable || 'NO',
+        c.openingBalance !== undefined ? String(c.openingBalance) : '0'
+      ]);
+    } else if (activeTab === 'transports') {
+      headers = ['Transport ID', 'Transport Name', 'GSTIN', 'Mode'];
+      rows = transports.map(t => [
+        t.id || '',
+        t.name || '',
+        t.gstin || '',
+        t.mode || ''
+      ]);
+    } else if (activeTab === 'income') {
+      headers = ['Category ID', 'Category Name'];
+      rows = incomes.map(inc => [
+        inc.id || '',
+        inc.name || ''
+      ]);
+    } else if (activeTab === 'expenses') {
+      headers = ['Category ID', 'Category Name'];
+      rows = expenses.map(e => [
+        e.id || '',
+        e.name || ''
+      ]);
+    }
+
+    const csvContent = [
+      headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','), 
+      ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const filteredItems = activeTab === 'models' 
     ? products.filter(p => p && (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (p?.id || '').toLowerCase().includes(searchQuery.toLowerCase()))
     : activeTab === 'units' 
@@ -856,7 +960,7 @@ export default function ProductMaster() {
         </button>
       </div>
 
-      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
@@ -867,6 +971,14 @@ export default function ProductMaster() {
             className="w-full bg-slate-50 border-none rounded-xl py-2.5 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
           />
         </div>
+        <button
+          onClick={handleExportMaster}
+          className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 px-5 py-2.5 rounded-xl text-sm font-bold text-slate-600 transition-all border border-slate-200/60 shadow-sm"
+          title={`Export ${activeTab} data to Excel/CSV`}
+        >
+          <Download className="w-4 h-4" />
+          <span>Export {activeTab === 'models' ? 'Models' : activeTab === 'styles' ? 'Styles' : activeTab === 'units' ? 'Godowns' : activeTab === 'suppliers' ? 'Suppliers' : activeTab === 'customers' ? 'Customers' : activeTab === 'transports' ? 'Transports' : 'Data'}</span>
+        </button>
       </div>
 
       <div className={activeTab === 'models' ? "flex flex-col gap-5 max-w-4xl mx-auto w-full" : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"}>

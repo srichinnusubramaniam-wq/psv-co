@@ -56,6 +56,7 @@ interface SaleRecord {
   createdAt: string;
   hsn?: string;
   unit?: string;
+  godown?: string;
 }
 
 interface GeneratedInvoice {

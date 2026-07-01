@@ -42,6 +42,7 @@ interface SaleRecord {
   hsn?: string;
   unit?: string;
   style?: string;
+  godown?: string;
 }
 
 interface GeneratedInvoice {
@@ -148,6 +149,7 @@ export default function Billing() {
   const [appSettings, setAppSettings] = useState<any>({});
   const [productionAssignments, setProductionAssignments] = useState<any[]>([]);
   const [styles, setStyles] = useState<any[]>([]);
+  const [godowns, setGodowns] = useState<any[]>([]);
 
   // Active Billing Creator Form State
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
@@ -240,6 +242,15 @@ export default function Billing() {
       const savedTransports = JSON.parse(localStorage.getItem('inven_transports') || '[]');
       const settings = JSON.parse(localStorage.getItem('inven_settings') || '{}');
       const savedProduction = JSON.parse(localStorage.getItem('inven_production') || '[]');
+      let savedGodowns = JSON.parse(localStorage.getItem('inven_unit_master') || '[]');
+      if (!savedGodowns || savedGodowns.length === 0) {
+        savedGodowns = [
+          { id: 'U-001', name: 'UNIT-1' },
+          { id: 'U-002', name: 'UNIT-2' },
+          { id: 'U-003', name: 'UNIT-3' }
+        ];
+        localStorage.setItem('inven_unit_master', JSON.stringify(savedGodowns));
+      }
       
       let savedStyles = JSON.parse(localStorage.getItem('inven_style_master') || '[]');
       if (!savedStyles || savedStyles.length === 0) {
@@ -257,6 +268,7 @@ export default function Billing() {
       setAppSettings(settings);
       setProductionAssignments(savedProduction);
       setStyles(savedStyles);
+      setGodowns(savedGodowns);
 
       // Initialize default values for creator form
       if (!editingInvoiceId) {
@@ -582,7 +594,8 @@ export default function Billing() {
       createdAt: new Date().toISOString(),
       hsn: '52082910',
       unit: 'Pcs',
-      style: ''
+      style: '',
+      godown: ''
     };
     setBillItems([...billItems, newItem]);
   };
@@ -1374,13 +1387,6 @@ export default function Billing() {
                                 <Edit className="w-4 h-4" />
                               </button>
                               <button 
-                                onClick={() => handleOpenPayment(inv)}
-                                title="Log Client Payment"
-                                className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                              >
-                                <Coins className="w-4 h-4" />
-                              </button>
-                              <button 
                                 onClick={() => handleDeleteInvoice(inv.id, inv.invoiceNo)}
                                 title="Delete Bill"
                                 className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
@@ -1776,15 +1782,16 @@ export default function Billing() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[4%]">S.No</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[23%]">Fabric Model / Description</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[13%]">Style</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[8%]">HSN</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[9%]">Quantity</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[6%]">Unit</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[9%]">Unit Price</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[8%]">Discount (%)</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[9%]">Discount (₹)</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[3%]">S.No</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[32%]">Fabric Model / Description</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[10%]">Style</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[9%]">Godown</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[6%]">HSN</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[5%]">Quantity</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[3%]">Unit</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[8%]">Unit Price</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[4%]">Discount (%)</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[5%]">Discount (₹)</th>
                     <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[11%]">Amount</th>
                     <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[4%]"></th>
                   </tr>
@@ -1833,15 +1840,30 @@ export default function Billing() {
                         })()}
                       </td>
                       <td className="py-2 px-4">
-                        <select
+                        <input
+                          type="text"
+                          list={`style-options-${index}`}
                           value={item.style || ''}
                           onChange={(e) => updateLineItem(index, 'style', e.target.value)}
-                          className="w-full bg-slate-50/50 text-xs font-bold text-slate-700 outline-none cursor-pointer py-1.5 border-b border-dashed border-slate-200 rounded min-w-[110px]"
-                        >
-                          <option value="">Select Style</option>
+                          className="w-full bg-slate-50/50 hover:bg-slate-100/40 focus:bg-white text-xs font-bold text-slate-700 outline-none py-1.5 border-b border-dashed border-slate-200 rounded min-w-[90px] px-2"
+                          placeholder="Select Style"
+                        />
+                        <datalist id={`style-options-${index}`}>
                           {styles.map((st) => (
-                            <option key={st.id} value={st.name}>
-                              {st.name}
+                            <option key={st.id} value={st.name} />
+                          ))}
+                        </datalist>
+                      </td>
+                      <td className="py-2 px-4">
+                        <select
+                          value={item.godown || ''}
+                          onChange={(e) => updateLineItem(index, 'godown', e.target.value)}
+                          className="w-full bg-slate-50/50 text-xs font-bold text-slate-700 outline-none cursor-pointer py-1.5 border-b border-dashed border-slate-200 rounded min-w-[90px]"
+                        >
+                          <option value="">Select Godown</option>
+                          {godowns.map((g) => (
+                            <option key={g.id || g.name} value={g.name}>
+                              {g.name}
                             </option>
                           ))}
                         </select>
@@ -1851,7 +1873,7 @@ export default function Billing() {
                           type="text" 
                           value={item.hsn || ''}
                           onChange={(e) => updateLineItem(index, 'hsn', e.target.value)}
-                          className="w-full bg-slate-50/50 outline-none text-xs font-bold text-slate-500 px-2 py-1.5 border-b border-dashed border-slate-200 rounded text-center font-mono min-w-[85px]"
+                          className="w-full bg-slate-50/50 outline-none text-xs font-bold text-slate-500 px-2 py-1.5 border-b border-dashed border-slate-200 rounded text-center font-mono min-w-[65px]"
                           placeholder="5208..."
                         />
                       </td>
@@ -1861,7 +1883,7 @@ export default function Billing() {
                           const total = stock ? stock.totalQty : 0;
                           const hasExceeded = item.modelName && item.quantity > total;
                           return (
-                            <div className="flex flex-col gap-1 min-w-[100px]">
+                            <div className="flex flex-col gap-1 min-w-[60px]">
                               <input 
                                 type="number" 
                                 value={item.quantity}
@@ -1904,7 +1926,7 @@ export default function Billing() {
                           onChange={(e) => updateLineItem(index, 'discountPercentage', parseFloat(e.target.value) || 0)}
                           onWheel={(e) => e.currentTarget.blur()}
                           placeholder="%"
-                          className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono min-w-[65px]"
+                          className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono min-w-[45px]"
                         />
                       </td>
                       <td className="py-2 px-4">
@@ -1913,7 +1935,7 @@ export default function Billing() {
                           value={item.discountCost || 0}
                           onChange={(e) => updateLineItem(index, 'discountCost', parseFloat(e.target.value) || 0)}
                           onWheel={(e) => e.currentTarget.blur()}
-                          className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono"
+                          className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono min-w-[55px]"
                         />
                       </td>
                       <td className="py-2 px-4 text-right font-mono font-bold text-slate-800 text-sm">

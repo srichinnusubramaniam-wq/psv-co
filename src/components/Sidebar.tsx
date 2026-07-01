@@ -36,7 +36,7 @@ export default function Sidebar({
         <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">
           I
         </div>
-        <span className="text-xl font-bold tracking-tight text-slate-800 uppercase">PSV&CO</span>
+        <span className="text-xl font-bold tracking-tight text-slate-800 uppercase">PSV & CO</span>
       </div>
 
       <nav className="flex-1 px-4 py-4 space-y-1">
