@@ -29,16 +29,14 @@ export interface ProductModel {
   productGroupName: string;
   hsn: string;
   createdAt: string;
-  basePrice?: number;
-  category?: string;
+ 
 }
 
 export interface ProductionUnitMaster {
   id: string;
   name: string;
   location?: string;
-  supervisor?: string;
-  capacity?: string;
+ 
   modelRates?: { modelId: string; rate: number }[];
 }
 
@@ -365,9 +363,7 @@ export default function ProductMaster() {
     if (activeTab === 'models') {
       const modelData = {
         ...productFormData,
-        name: (productFormData.description || '').toUpperCase(),
-        basePrice: productFormData.basePrice || 0,
-        category: productFormData.category || 'NIGHTY'
+        name: (productFormData.description || '').toUpperCase()
       };
       if (editingId) {
         const updated = products.map(p => p.id === editingId ? { ...p, ...modelData as ProductModel } : p);
@@ -774,16 +770,14 @@ export default function ProductMaster() {
     const filename = `Master_${activeTab}_${new Date().toISOString().split('T')[0]}.csv`;
 
     if (activeTab === 'models') {
-      headers = ['Model ID', 'Model Name', 'Code', 'Description', 'Product Group', 'HSN Code', 'Base Price', 'Category'];
+      headers = ['Model ID', 'Model Name', 'Code', 'Description', 'Product Group', 'HSN Code'];
       rows = products.map(p => [
         p.id || '',
         p.name || '',
         p.code || '',
         p.description || '',
         p.productGroupName || '',
-        p.hsn || '',
-        p.basePrice !== undefined ? String(p.basePrice) : '',
-        p.category || ''
+        p.hsn || ''
       ]);
     } else if (activeTab === 'styles') {
       headers = ['Style ID', 'Style Name'];
@@ -796,9 +790,7 @@ export default function ProductMaster() {
       rows = units.map(u => [
         u.id || '',
         u.name || '',
-        u.location || '',
-        u.supervisor || '',
-        u.capacity || ''
+        u.location || ''
       ]);
     } else if (activeTab === 'suppliers') {
       headers = ['Supplier ID', 'Supplier Name', 'Company Name', 'Contact Person', 'Phone', 'Mobile', 'Email', 'Address', 'GSTIN', 'Pincode', 'State', 'District', 'Opening Balance'];

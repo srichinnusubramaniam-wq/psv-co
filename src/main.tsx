@@ -2,6 +2,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initializeSupabaseSync } from './lib/supabase.ts';
+
+// Initialize Supabase Synchronization
+initializeSupabaseSync();
 
 // Mitigate iframe/sandbox localStorage access blocks
 try {

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, RefreshCw } from 'lucide-react';
+import { Settings as SettingsIcon, Save, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, ExternalLink, HelpCircle, Cloud } from 'lucide-react';
+import { 
+  subscribeToSyncStatus, 
+  getSyncStatus, 
+  pullFromSupabase, 
+  pushAllToSupabase,
+  verifySupabaseSetup,
+  SyncStatus
+} from '../lib/supabase';
 
 export default function Settings() {
   const [supplierPrefix, setSupplierPrefix] = useState('SUP');
@@ -19,6 +27,110 @@ export default function Settings() {
   const [companyLogo, setCompanyLogo] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
   const [isSaved, setIsSaved] = useState(false);
+
+  // Supabase states
+  const [syncState, setSyncState] = useState<SyncStatus>(getSyncStatus());
+  const [showSQL, setShowSQL] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [actionResult, setActionResult] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSyncStatus((status) => {
+      setSyncState(status);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleVerifySetup = async () => {
+    setActionResult(null);
+    const ok = await verifySupabaseSetup();
+    if (ok) {
+      setActionResult({ type: 'success', message: 'Connection verified successfully! Table exists.' });
+    } else {
+      setActionResult({ type: 'error', message: 'Table local_storage_sync not found. See setup instructions below.' });
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    setActionResult(null);
+    const ok = await pullFromSupabase();
+    if (ok) {
+      setActionResult({ type: 'success', message: 'Successfully pulled and restored all data from Supabase Cloud!' });
+    } else {
+      setActionResult({ type: 'error', message: 'Failed to pull. Ensure the table is created and populated.' });
+    }
+  };
+
+  const handlePushToCloud = async () => {
+    setActionResult(null);
+    const ok = await pushAllToSupabase();
+    if (ok) {
+      setActionResult({ type: 'success', message: 'Successfully pushed and backed up all local data into Supabase Cloud!' });
+    } else {
+      setActionResult({ type: 'error', message: 'Failed to push data. Please check connection or your Supabase SQL schema.' });
+    }
+  };
+
+  const copySQL = () => {
+    const sql = `-- Dynamic Table Creation queries for all inventory management models
+-- You can run these in your Supabase SQL editor to ensure all tables are created.
+
+create table if not exists inven_customers (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_expense_master (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_expense_records (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_generated_invoices (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_income_master (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_income_records (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_inventory (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_product_master (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_production (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_sales (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_settings (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_style_master (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_suppliers (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_transports (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+create table if not exists inven_unit_master (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
+
+-- Disable Row Level Security (RLS) so that public clients can write to these tables:
+alter table inven_customers disable row level security;
+alter table inven_expense_master disable row level security;
+alter table inven_expense_records disable row level security;
+alter table inven_generated_invoices disable row level security;
+alter table inven_income_master disable row level security;
+alter table inven_income_records disable row level security;
+alter table inven_inventory disable row level security;
+alter table inven_product_master disable row level security;
+alter table inven_production disable row level security;
+alter table inven_sales disable row level security;
+alter table inven_settings disable row level security;
+alter table inven_style_master disable row level security;
+alter table inven_suppliers disable row level security;
+alter table inven_transports disable row level security;
+alter table inven_unit_master disable row level security;
+
+-- Enable replica identity full for real-time updates:
+alter table inven_customers replica identity full;
+alter table inven_expense_master replica identity full;
+alter table inven_expense_records replica identity full;
+alter table inven_generated_invoices replica identity full;
+alter table inven_income_master replica identity full;
+alter table inven_income_records replica identity full;
+alter table inven_inventory replica identity full;
+alter table inven_product_master replica identity full;
+alter table inven_production replica identity full;
+alter table inven_sales replica identity full;
+alter table inven_settings replica identity full;
+alter table inven_style_master replica identity full;
+alter table inven_suppliers replica identity full;
+alter table inven_transports replica identity full;
+alter table inven_unit_master replica identity full;
+
+-- Enable realtime updates publication:
+alter publication supabase_realtime add table inven_customers, inven_expense_master, inven_expense_records, inven_generated_invoices, inven_income_master, inven_income_records, inven_inventory, inven_product_master, inven_production, inven_sales, inven_settings, inven_style_master, inven_suppliers, inven_transports, inven_unit_master;`;
+    navigator.clipboard.writeText(sql);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   useEffect(() => {
     const settings = localStorage.getItem('inven_settings');
@@ -314,6 +426,165 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Supabase Sync Settings Card */}
+          <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800">Supabase Cloud Database</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Real-time Cloud Synchronization</p>
+                </div>
+              </div>
+
+              {/* Status Badge */}
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                  syncState.connected && syncState.tableExists
+                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                    : syncState.connected 
+                    ? 'bg-amber-50 text-amber-600 border-amber-100'
+                    : 'bg-rose-50 text-rose-600 border-rose-100'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    syncState.connected && syncState.tableExists ? 'bg-emerald-500 animate-pulse' : syncState.connected ? 'bg-amber-500' : 'bg-rose-500'
+                  }`} />
+                  {syncState.connected && syncState.tableExists ? 'Active Sync' : syncState.connected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+            </div>
+
+            {/* Sync Info / Status Messages */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Connection Endpoint</span>
+                <span className="font-mono font-bold text-slate-700 truncate block">https://tvzsircmxoneoghsecyz.supabase.co</span>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Last Cloud Sync</span>
+                <span className="font-bold text-slate-700 block">
+                  {syncState.lastSyncedAt 
+                    ? syncState.lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : 'No sync completed yet'
+                  }
+                </span>
+              </div>
+            </div>
+
+            {/* Action Feedback Notification */}
+            {actionResult && (
+              <div className={`p-4 rounded-2xl text-xs font-semibold flex items-start gap-2.5 border ${
+                actionResult.type === 'success' 
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-100' 
+                  : 'bg-rose-50 text-rose-800 border-rose-100'
+              }`}>
+                {actionResult.type === 'success' ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <p>{actionResult.message}</p>
+              </div>
+            )}
+
+            {/* Real-time Sync Error Notification */}
+            {syncState.error && (
+              <div className="p-4 rounded-2xl text-xs font-semibold flex items-start gap-2.5 border bg-rose-50 text-rose-800 border-rose-100">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5 font-bold" />
+                <div className="space-y-1 text-left w-full">
+                  <p className="font-bold">Database Sync Warning/Error:</p>
+                  <p className="font-mono text-[11px] bg-white/60 p-2.5 rounded-xl border border-rose-100/60 max-h-24 overflow-y-auto select-all">{syncState.error}</p>
+                  <p className="text-[11px] text-rose-700 mt-1 font-sans leading-relaxed">
+                    <strong>Solution:</strong> Open your <strong>Supabase Dashboard</strong>, navigate to the <strong>SQL Editor</strong>, click <strong>"New query"</strong>, paste the complete schema/RLS SQL setup queries below, and click <strong>"Run"</strong>. This will automatically disable Row Level Security policies so clients can write, and enable real-time updates.
+                  </p>
+                </div>
+              </div>
+            )}
+
+             {/* Action Buttons */}
+            <div className="flex flex-wrap gap-4">
+              <button 
+                onClick={handleVerifySetup}
+                disabled={syncState.syncing}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer min-w-[140px]"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncState.syncing ? 'animate-spin' : ''}`} />
+                Verify Database
+              </button>
+              <button 
+                onClick={handlePushToCloud}
+                disabled={syncState.syncing}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-600 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer min-w-[140px]"
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                Push to Cloud
+              </button>
+              <button 
+                onClick={handlePullFromCloud}
+                disabled={syncState.syncing}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 text-indigo-600 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer min-w-[140px]"
+              >
+                <Database className="w-3.5 h-3.5" />
+                Restore from Cloud
+              </button>
+            </div>
+
+            {/* SQL Instructions Accordion */}
+            <div className="pt-2">
+              <button 
+                onClick={() => setShowSQL(!showSQL)}
+                className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+              >
+                <HelpCircle className="w-4 h-4" />
+                {showSQL ? 'Hide Setup Instructions' : 'View Supabase Setup Guide & SQL Queries'}
+              </button>
+
+              {showSQL && (
+                <div className="mt-4 p-5 bg-slate-900 text-slate-100 rounded-2xl border border-slate-850 space-y-4 font-sans text-xs animate-in slide-in-from-top-2 duration-300">
+                  <div className="space-y-1">
+                    <p className="font-bold text-indigo-400">Database Schema Setup Status</p>
+                    <p className="text-slate-400 leading-relaxed">
+                      Your database has matching tables for each models (e.g. <strong className="text-white font-medium">inven_product_master</strong>, <strong className="text-white font-medium">inven_style_master</strong>, etc.) with columns <code className="text-emerald-400 font-mono">id (text primary key)</code>, <code className="text-emerald-400 font-mono">value (jsonb)</code>, and <code className="text-emerald-400 font-mono">updated_at (timestamptz)</code>.
+                    </p>
+                  </div>
+
+                  <div className="relative">
+                    <pre className="bg-slate-950 p-4 rounded-xl font-mono text-[11px] overflow-x-auto text-slate-300 max-h-48 border border-white/5">
+{`-- SQL to create any of your tables (e.g. inven_product_master):
+create table if not exists inven_product_master (
+  id text primary key,
+  value jsonb,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Enable Realtime replication:
+alter table inven_product_master replica identity full;
+alter publication supabase_realtime add table inven_product_master;`}
+                    </pre>
+                    <button 
+                      onClick={copySQL}
+                      className="absolute right-3 top-3 p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <div className="text-slate-400 space-y-1 leading-relaxed bg-white/5 p-4 rounded-xl border border-white/5">
+                    <p className="font-semibold text-slate-200">How real-time synchronization works:</p>
+                    <ul className="list-disc list-inside space-y-1 ml-1 text-slate-300">
+                      <li>Overrides default local state updates to write to cloud instantly</li>
+                      <li>Implements database replication triggers to update other clients in real-time</li>
+                      <li>Ensures zero-latency offline loading using local-first storage fallback</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
