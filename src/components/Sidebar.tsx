@@ -18,7 +18,7 @@ const navItems = [
   { icon: Factory, label: 'Godown Transfer' },
   { icon: Tag, label: 'Master' },
   { icon: Receipt, label: 'Billing' },
-  { icon: TrendingUp, label: 'Record Income' },
+  { icon: TrendingUp, label: 'Customer Receipts' },
   { icon: BarChart3, label: 'Reports' },
   { icon: Settings, label: 'Settings' },
 ];

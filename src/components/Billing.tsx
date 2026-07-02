@@ -95,6 +95,7 @@ interface GeneratedInvoice {
   isModified?: boolean;
   modifiedAt?: string;
   originalAmount?: number;
+  customerId?: string;
 }
 
 const numberToWords = (num: number) => {
@@ -706,11 +707,15 @@ export default function Billing() {
     // Get original invoice to maintain modifications
     const originalInvoice = invoices.find(inv => inv.id === editingInvoiceId);
     
+    const foundCust = customers.find(c => (c?.name || '').toUpperCase() === (buyerName || '').toUpperCase());
+    const matchedCustomerId = foundCust ? foundCust.id : originalInvoice?.customerId || '';
+    
     return {
       id: currentId,
       invoiceNo,
       date: parseSafeDate(invoiceDate).toLocaleDateString('en-GB'),
       term,
+      customerId: matchedCustomerId,
       buyer: {
         name: (buyerName || '').toUpperCase(),
         address: (buyerAddress || '').toUpperCase(),

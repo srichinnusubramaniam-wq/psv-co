@@ -14,6 +14,7 @@ import Invoice from '@/src/components/Invoice';
 import Billing from '@/src/components/Billing';
 import Expenses from '@/src/components/Expenses';
 import Income from '@/src/components/Income';
+import CustomerReceipts from '@/src/components/CustomerReceipts';
 import Reports from '@/src/components/Reports';
 import Settings from '@/src/components/Settings';
 import { Plus, X, FileText, Receipt, Factory } from 'lucide-react';
@@ -81,6 +82,8 @@ export default function App() {
         );
       case 'record income':
         return <Income />;
+      case 'customer receipts':
+        return <CustomerReceipts />;
       case 'reports':
         return <Reports />;
       case 'settings':

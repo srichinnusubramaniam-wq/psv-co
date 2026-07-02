@@ -847,11 +847,10 @@ export default function Reports() {
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-1">
           <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest px-2.5 mb-3">Ledger Modules</p>
           
-          {([ 'sales', 'expenses', 'income', 'inventory', 'production', 'supplier', 'godown' ] as const).map((type) => {
+          {([ 'sales', 'income', 'inventory', 'production', 'supplier', 'godown' ] as const).map((type) => {
             const isActive = selectedReport === type;
             const meta = {
               sales: { label: 'Sales & Invoices', desc: 'Invoiced orders, GST breakdown & dues', icon: FileText, color: 'text-indigo-600' },
-              expenses: { label: 'Expenses Records', desc: 'Cash outflows & vendor transactions', icon: TrendingDown, color: 'text-rose-500' },
               income: { label: 'Other Income Logs', desc: 'Capital inputs & secondary incomes', icon: TrendingUp, color: 'text-emerald-500' },
               inventory: { label: 'Inventory Stock Assets', desc: 'Fabric warehouse & valuation audit', icon: Package, color: 'text-amber-500' },
               production: { label: 'Production Workflows', desc: 'Fabric delivery & supervisor assignments', icon: Factory, color: 'text-sky-500' },

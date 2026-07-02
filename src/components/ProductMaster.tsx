@@ -980,7 +980,7 @@ export default function ProductMaster() {
         </button>
       </div>
 
-      <div className="flex gap-2 p-1 bg-slate-100 w-fit rounded-2xl">
+      <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl w-full sm:w-auto">
         <button 
           onClick={() => { setActiveTab('models'); setSearchQuery(''); }}
           className={cn(
@@ -1035,6 +1035,24 @@ export default function ProductMaster() {
         >
           Transports
         </button>
+        <button 
+          onClick={() => { setActiveTab('income'); setSearchQuery(''); }}
+          className={cn(
+            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+            activeTab === 'income' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Income
+        </button>
+        <button 
+          onClick={() => { setActiveTab('expenses'); setSearchQuery(''); }}
+          className={cn(
+            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
+            activeTab === 'expenses' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Expenses
+        </button>
       </div>
 
       <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
@@ -1054,7 +1072,7 @@ export default function ProductMaster() {
           title={`Export ${activeTab} data to Excel/CSV`}
         >
           <Download className="w-4 h-4" />
-          <span>Export {activeTab === 'models' ? 'Models' : activeTab === 'styles' ? 'Styles' : activeTab === 'units' ? 'Godowns' : activeTab === 'suppliers' ? 'Suppliers' : activeTab === 'customers' ? 'Customers' : activeTab === 'transports' ? 'Transports' : 'Data'}</span>
+          <span>Export {activeTab === 'models' ? 'Models' : activeTab === 'styles' ? 'Styles' : activeTab === 'units' ? 'Godowns' : activeTab === 'suppliers' ? 'Suppliers' : activeTab === 'customers' ? 'Customers' : activeTab === 'transports' ? 'Transports' : activeTab === 'income' ? 'Income Categories' : activeTab === 'expenses' ? 'Expense Categories' : 'Data'}</span>
         </button>
       </div>
 
@@ -1426,7 +1444,7 @@ export default function ProductMaster() {
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">
-                  {editingId ? 'Edit' : 'Add New'} {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'styles' ? 'Style' : 'Expense Category'}
+                  {editingId ? 'Edit' : 'Add New'} {activeTab === 'models' ? 'Model' : activeTab === 'units' ? 'Godown' : activeTab === 'suppliers' ? 'Supplier' : activeTab === 'customers' ? 'Customer' : activeTab === 'transports' ? 'Transport' : activeTab === 'styles' ? 'Style' : activeTab === 'income' ? 'Income Category' : 'Expense Category'}
                 </h3>
               </div>
               <button onClick={() => setIsFormOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
