@@ -104,9 +104,44 @@ export default function Customers() {
       const updated = customers.map(c => c.id === editingId ? { ...c, ...updatedData as Customer } : c);
       saveCustomers(updated);
     } else {
+      // ID Generation from Settings for Customer
+      const settingsRaw = localStorage.getItem('inven_settings');
+      let generatedId = '';
+      let settingsParsed: any = null;
+      if (settingsRaw) {
+        try { settingsParsed = JSON.parse(settingsRaw); } catch (e) {}
+      }
+      
+      const prefix = settingsParsed?.customerPrefix || 'CUS';
+      let nextId = settingsParsed?.nextCustomerId || 1;
+      
+      let exists = true;
+      while (exists) {
+        generatedId = `${prefix}-${nextId.toString().padStart(4, '0')}`;
+        exists = customers.some(c => c && c.id === generatedId);
+        if (exists) {
+          nextId++;
+        }
+      }
+      
+      if (settingsParsed) {
+        localStorage.setItem('inven_settings', JSON.stringify({
+          ...settingsParsed,
+          nextCustomerId: nextId + 1
+        }));
+      } else {
+        localStorage.setItem('inven_settings', JSON.stringify({
+          customerPrefix: 'CUS',
+          nextCustomerId: nextId + 1
+        }));
+      }
+
+      // Dispatch event to keep other screens in sync
+      window.dispatchEvent(new Event('inven_localstorage_sync'));
+
       const newCustomer: Customer = {
         ...updatedData as Customer,
-        id: `CUS-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
+        id: generatedId,
         createdAt: new Date().toISOString(),
       };
       saveCustomers([newCustomer, ...customers]);

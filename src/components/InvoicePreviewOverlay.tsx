@@ -159,7 +159,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
         </div>
 
         {/* Actual Invoice Content */}
-        <div className="p-10 bg-white min-h-[1100px] text-slate-900 leading-normal border-[1px] border-slate-800 m-4">
+        <div className="p-6 md:p-8 bg-white min-h-[920px] print:min-h-0 print:p-2 print:m-0 text-slate-900 leading-normal border-[1px] border-slate-800 m-2 md:m-4">
           <div className="border-[1.5px] border-slate-800 p-0">
             {/* Header */}
             <div className="grid grid-cols-[120px_1fr_150px] border-b-[1.5px] border-slate-800 p-4 items-center bg-white">
@@ -364,7 +364,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
             </div>
 
             {/* Table */}
-            <div className="flex-1 flex flex-col min-h-[420px] border-b-[1.5px] border-slate-800 bg-white">
+            <div className="flex-1 flex flex-col min-h-[200px] print:min-h-0 border-b-[1.5px] border-slate-800 bg-white">
               <table className="w-full text-left text-[12px] border-collapse">
                 <thead>
                   <tr className="bg-[#f1b3d0] text-slate-900 font-extrabold text-center border-b-[1.5px] border-slate-800">
@@ -429,7 +429,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                   ))}
                   
                   {/* Filler empty rows to give natural document space */}
-                  {Array.from({ length: Math.max(1, 10 - previewInvoice.items.length) }).map((_, i) => (
+                  {Array.from({ length: Math.max(1, 5 - previewInvoice.items.length) }).map((_, i) => (
                     <tr key={`filler-${i}`} className="border-b-[0.5px] border-slate-100">
                       <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
                       <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
@@ -641,7 +641,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
             </div>
 
             {/* Footer Notes and Signature */}
-            <div className="grid grid-cols-[1fr_250px] border-t-[1.5px] border-slate-800 min-h-[140px] items-stretch bg-white">
+            <div className="grid grid-cols-[1fr_250px] border-t-[1.5px] border-slate-800 min-h-[100px] print:min-h-0 items-stretch bg-white">
               <div className="p-3 border-r-[1.5px] border-slate-800 text-[10px] text-slate-800 font-bold leading-relaxed flex flex-col justify-end space-y-1">
                 <p className="italic font-normal">Subject to Salem Jurisdiction.</p>
                 <p className="italic font-bold">We are not responsible for any loss or damage in transit.</p>
@@ -657,12 +657,12 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
           </div>
 
           {/* Declaration */}
-          <div className="mt-4 border-[1px] border-slate-800 text-[10px] p-2 flex items-center justify-between bg-slate-50/20">
+          <div className="mt-2 print:mt-1 border-[1px] border-slate-800 text-[10px] p-2 flex items-center justify-between bg-slate-50/20">
             <p><span className="font-black">Declaration:</span> We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
             <p className="font-bold">Page No : 1 of 1</p>
           </div>
 
-          <div className="mt-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+          <div className="mt-2 print:mt-1 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             {previewInvoice.companyName || 'P.S.V & CO'}, {previewInvoice.companyAddress?.split('\n')[0] || ''}
           </div>
         </div>

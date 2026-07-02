@@ -493,12 +493,37 @@ export default function ProductMaster() {
           if (customerFound) {
             saveCustomers(updatedCustomers);
           } else {
+            const settingsRaw = localStorage.getItem('inven_settings');
             let customerId = '';
+            let settingsParsed: any = null;
+            if (settingsRaw) {
+              try { settingsParsed = JSON.parse(settingsRaw); } catch (e) {}
+            }
+            
+            const custPrefix = settingsParsed?.customerPrefix || 'CUS';
+            let custNextId = settingsParsed?.nextCustomerId || 1;
+            
             let exists = true;
             while (exists) {
-              customerId = `CUS-${Math.floor(1000 + Math.random() * 9000)}`;
+              customerId = `${custPrefix}-${custNextId.toString().padStart(4, '0')}`;
               exists = customers.some(c => c && c.id === customerId);
+              if (exists) {
+                custNextId++;
+              }
             }
+            
+            if (settingsParsed) {
+              localStorage.setItem('inven_settings', JSON.stringify({
+                ...settingsParsed,
+                nextCustomerId: custNextId + 1
+              }));
+            } else {
+              localStorage.setItem('inven_settings', JSON.stringify({
+                customerPrefix: 'CUS',
+                nextCustomerId: custNextId + 1
+              }));
+            }
+
             const newCustomer: CustomerMaster = {
               id: customerId,
               name: updatedData.name,
@@ -582,12 +607,37 @@ export default function ProductMaster() {
           if (customerFound) {
             saveCustomers(updatedCustomers);
           } else {
+            const settingsRaw = localStorage.getItem('inven_settings');
             let customerId = '';
+            let settingsParsed: any = null;
+            if (settingsRaw) {
+              try { settingsParsed = JSON.parse(settingsRaw); } catch (e) {}
+            }
+            
+            const custPrefix = settingsParsed?.customerPrefix || 'CUS';
+            let custNextId = settingsParsed?.nextCustomerId || 1;
+            
             let exists = true;
             while (exists) {
-              customerId = `CUS-${Math.floor(1000 + Math.random() * 9000)}`;
+              customerId = `${custPrefix}-${custNextId.toString().padStart(4, '0')}`;
               exists = customers.some(c => c && c.id === customerId);
+              if (exists) {
+                custNextId++;
+              }
             }
+            
+            if (settingsParsed) {
+              localStorage.setItem('inven_settings', JSON.stringify({
+                ...settingsParsed,
+                nextCustomerId: custNextId + 1
+              }));
+            } else {
+              localStorage.setItem('inven_settings', JSON.stringify({
+                customerPrefix: 'CUS',
+                nextCustomerId: custNextId + 1
+              }));
+            }
+
             const newCustomer: CustomerMaster = {
               id: customerId,
               name: updatedData.name,
@@ -664,11 +714,35 @@ export default function ProductMaster() {
         const updated = customers.map(c => c.id === editingId ? { ...c, ...updatedData } : c);
         saveCustomers(updated);
       } else {
+        const settingsRaw = localStorage.getItem('inven_settings');
         let generatedId = '';
+        let settingsParsed: any = null;
+        if (settingsRaw) {
+          try { settingsParsed = JSON.parse(settingsRaw); } catch (e) {}
+        }
+        
+        const prefix = settingsParsed?.customerPrefix || 'CUS';
+        let nextId = settingsParsed?.nextCustomerId || 1;
+        
         let exists = true;
         while (exists) {
-          generatedId = `CUS-${Math.floor(1000 + Math.random() * 9000)}`;
+          generatedId = `${prefix}-${nextId.toString().padStart(4, '0')}`;
           exists = customers.some(c => c && c.id === generatedId);
+          if (exists) {
+            nextId++;
+          }
+        }
+        
+        if (settingsParsed) {
+          localStorage.setItem('inven_settings', JSON.stringify({
+            ...settingsParsed,
+            nextCustomerId: nextId + 1
+          }));
+        } else {
+          localStorage.setItem('inven_settings', JSON.stringify({
+            customerPrefix: 'CUS',
+            nextCustomerId: nextId + 1
+          }));
         }
 
         const newCustomer: CustomerMaster = {

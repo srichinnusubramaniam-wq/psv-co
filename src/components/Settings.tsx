@@ -12,6 +12,8 @@ import {
 export default function Settings() {
   const [supplierPrefix, setSupplierPrefix] = useState('SUP');
   const [nextSupplierId, setNextSupplierId] = useState(1);
+  const [customerPrefix, setCustomerPrefix] = useState('CUS');
+  const [nextCustomerId, setNextCustomerId] = useState(1);
   const [modelPrefix, setModelPrefix] = useState('MOD');
   const [nextModelId, setNextModelId] = useState(1);
   const [prodPrefix, setProdPrefix] = useState('PRD');
@@ -139,6 +141,8 @@ alter publication supabase_realtime add table inven_customers, inven_expense_mas
         const parsed = JSON.parse(settings);
         setSupplierPrefix(parsed.supplierPrefix || 'SUP');
         setNextSupplierId(parsed.nextSupplierId || 1);
+        setCustomerPrefix(parsed.customerPrefix || 'CUS');
+        setNextCustomerId(parsed.nextCustomerId || 1);
         setModelPrefix(parsed.modelPrefix || 'MOD');
         setNextModelId(parsed.nextModelId || 1);
         setProdPrefix(parsed.prodPrefix || 'PRD');
@@ -163,6 +167,8 @@ alter publication supabase_realtime add table inven_customers, inven_expense_mas
     const settings = {
       supplierPrefix,
       nextSupplierId,
+      customerPrefix,
+      nextCustomerId,
       modelPrefix,
       nextModelId,
       prodPrefix,
@@ -269,7 +275,7 @@ alter publication supabase_realtime add table inven_customers, inven_expense_mas
             {/* Inventory & Production IDs */}
             <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
               <div className="flex items-center gap-3 pb-4 border-b border-slate-50">
-                <h3 className="font-bold text-slate-800">Godown Transfer IDs</h3>
+                <h3 className="font-bold text-slate-800">Entity Prefix & Starting IDs</h3>
               </div>
 
               <div className="space-y-5">
@@ -289,6 +295,27 @@ alter publication supabase_realtime add table inven_customers, inven_expense_mas
                       type="number" 
                       value={nextSupplierId || ''}
                       onChange={(e) => setNextSupplierId(parseInt(e.target.value) || 1)}
+                      className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Customer ID Prefix</p>
+                    <input 
+                      type="text" 
+                      value={customerPrefix || ''}
+                      onChange={(e) => setCustomerPrefix(e.target.value.toUpperCase())}
+                      className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Starting ID</p>
+                    <input 
+                      type="number" 
+                      value={nextCustomerId || ''}
+                      onChange={(e) => setNextCustomerId(parseInt(e.target.value) || 1)}
                       className="w-full bg-slate-50 border-none rounded-2xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold"
                     />
                   </div>
