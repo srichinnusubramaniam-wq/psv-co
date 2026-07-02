@@ -103,7 +103,18 @@ export interface CustomerMaster {
 }
 
 export default function ProductMaster() {
-  const [activeTab, setActiveTab] = useState<'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'styles'>('models');
+  const [activeTab, setActiveTabState] = useState<'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'styles'>(() => {
+    const saved = localStorage.getItem('inven_master_active_tab');
+    if (saved && ['models', 'units', 'suppliers', 'expenses', 'income', 'customers', 'transports', 'styles'].includes(saved)) {
+      return saved as any;
+    }
+    return 'models';
+  });
+
+  const setActiveTab = (tab: 'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'styles') => {
+    setActiveTabState(tab);
+    localStorage.setItem('inven_master_active_tab', tab);
+  };
   const [products, setProducts] = useState<ProductModel[]>([]);
   const [units, setUnits] = useState<ProductionUnitMaster[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierMaster[]>([]);
