@@ -49,8 +49,8 @@ input[type="number"] {
 /* Print Overrides for Professional PDF/Report Generation */
 @media print {
   @page {
-    size: portrait;
-    margin: 8mm !important;
+    size: auto;
+    margin: 5mm 8mm !important;
   }
 
   /* Hide structural panels, triggers, and control widgets */
@@ -126,7 +126,7 @@ input[type="number"] {
   }
 
   .invoice-print-container {
-    position: absolute !important;
+    position: relative !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
@@ -137,6 +137,101 @@ input[type="number"] {
     padding: 0 !important;
     background: white !important;
     page-break-inside: avoid !important;
+  }
+
+  /* Make the bill container ultra-compact under print mode to guarantee 1-page fit (Portrait & Landscape) */
+  .invoice-print-container div[class*="min-h-[920px]"],
+  .invoice-print-container div[class*="min-h-"],
+  .invoice-print-container div[class*="min-h-[200px]"] {
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Compact invoice table layout */
+  .invoice-print-container table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  .invoice-print-container th,
+  .invoice-print-container td {
+    padding: 3px 6px !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+  }
+
+  .invoice-print-container .h-8 {
+    height: 1.5rem !important;
+  }
+
+  /* Compact typography and paddings */
+  .invoice-print-container .text-3xl {
+    font-size: 1.5rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .invoice-print-container .text-2xl {
+    font-size: 1.25rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .invoice-print-container .text-sm {
+    font-size: 10px !important;
+  }
+
+  .invoice-print-container .text-xs,
+  .invoice-print-container .text-\[11px\] {
+    font-size: 9px !important;
+  }
+
+  .invoice-print-container .text-\[12px\] {
+    font-size: 10px !important;
+  }
+
+  .invoice-print-container .text-\[10px\] {
+    font-size: 8px !important;
+  }
+
+  .invoice-print-container .p-6,
+  .invoice-print-container .p-4,
+  .invoice-print-container .p-3,
+  .invoice-print-container .p-2 {
+    padding: 3px 6px !important;
+  }
+
+  .invoice-print-container .py-1\.5 {
+    padding-top: 3px !important;
+    padding-bottom: 3px !important;
+  }
+
+  .invoice-print-container .px-4 {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+
+  .invoice-print-container .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 3px !important;
+  }
+
+  .invoice-print-container .space-y-1\.5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1px !important;
+  }
+
+  .invoice-print-container .mt-4,
+  .invoice-print-container .mt-2 {
+    margin-top: 2px !important;
+  }
+
+  .invoice-print-container .mb-6,
+  .invoice-print-container .mb-4 {
+    margin-bottom: 2px !important;
+  }
+
+  .invoice-print-container .min-h-\[140px\],
+  .invoice-print-container .min-h-\[100px\],
+  .invoice-print-container .min-h-\[200px\] {
+    min-height: 0 !important;
   }
 }
 

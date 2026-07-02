@@ -1162,7 +1162,8 @@ export default function Billing() {
 
   return (
     <div className="space-y-6">
-      {/* Toast Alert */}
+      <div className={previewInvoice ? "no-print space-y-6" : "space-y-6"}>
+        {/* Toast Alert */}
       {toast && (
         <div className={cn(
           "fixed top-6 right-6 z-[200] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-xl border animate-in slide-in-from-top-4 duration-300",
@@ -2116,7 +2117,7 @@ export default function Billing() {
           </div>
         </div>
       )}
-
+      </div>
       {/* OVERLAY HIGH-FIDELITY INVOICE PREVIEW MODAL */}
       {previewInvoice && (
         <InvoicePreviewOverlay
