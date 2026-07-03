@@ -741,9 +741,11 @@ export default function Inventory() {
                     </td>
                     <td className="px-6 py-5">
                       <p className="text-sm font-bold text-indigo-600">₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                      <p className="text-[10px] text-slate-500 font-semibold">
-                        {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
-                      </p>
+                      {Number(item.quantity) > 0 && (
+                        <p className="text-[10px] text-slate-500 font-semibold">
+                          {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
+                        </p>
+                      )}
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex flex-col gap-1 w-fit">
@@ -2236,7 +2238,13 @@ export default function Inventory() {
                                 </button>
                               </td>
                               <td className="py-2.5 font-extrabold text-slate-800">{item.fabricType}</td>
-                              <td className="py-2.5 text-right font-bold">{item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}</td>
+                              <td className="py-2.5 text-right font-bold">
+                                {Number(item.quantity) > 0 ? (
+                                  `${item.quantity} ${item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}`
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
                               <td className="py-2.5 text-right">₹{item.pricePerMeter}</td>
                               <td className="py-2.5 text-right font-extrabold">₹{totalCost.toLocaleString()}</td>
                               <td className="py-2.5 text-right font-mono text-rose-500 font-bold">
