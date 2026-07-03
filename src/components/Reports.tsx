@@ -21,7 +21,9 @@ import {
   Eye,
   X,
   Coins,
-  Layers
+  Layers,
+  Clock,
+  History
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 
@@ -147,6 +149,11 @@ export default function Reports() {
     amountToPay: 0,
     isFullPayment: true
   });
+
+  // Supplier Statement Modal State
+  const [isStatementDialogOpen, setIsStatementDialogOpen] = useState(false);
+  const [statementItem, setStatementItem] = useState<any | null>(null);
+  const [isOverallSupplierStatementOpen, setIsOverallSupplierStatementOpen] = useState(false);
 
   // Reload data from localstorage
   const loadData = () => {
@@ -1469,9 +1476,18 @@ export default function Reports() {
 
                 {/* 2. Detailed audit grid */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
-                    <h3 className="text-sm font-black text-slate-800 uppercase">Supplier Transaction Ledger</h3>
-                    <span className="text-[10px] font-black text-slate-400 uppercase font-mono">{supplierReportData.items.length} lots matched</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-50 mb-4 select-none">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase">Supplier Transaction Ledger</h3>
+                      <p className="text-[10px] font-semibold text-slate-400 mt-0.5">{supplierReportData.items.length} lots matched</p>
+                    </div>
+                    <button
+                      onClick={() => setIsOverallSupplierStatementOpen(true)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 border-none text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto"
+                    >
+                      <FileText className="w-4 h-4" />
+                      View Statement
+                    </button>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -1575,13 +1591,22 @@ export default function Reports() {
                                 </div>
                               </td>
                               <td className="py-4 px-4 text-center print:hidden">
-                                <button
-                                  onClick={() => openPaymentDialog(item)}
-                                  className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 border-none text-indigo-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
-                                >
-                                  <Coins className="w-3.5 h-3.5" />
-                                  Pay/Manage
-                                </button>
+                                <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => openPaymentDialog(item)}
+                                    className="w-full sm:w-auto px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border-none text-indigo-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                  >
+                                    <Coins className="w-3.5 h-3.5" />
+                                    Pay/Manage
+                                  </button>
+                                  <button
+                                    onClick={() => { setStatementItem(item); setIsStatementDialogOpen(true); }}
+                                    className="w-full sm:w-auto px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center justify-center gap-1"
+                                  >
+                                    <FileText className="w-3.5 h-3.5 text-slate-500" />
+                                    View Statement
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1869,6 +1894,383 @@ export default function Reports() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Supplier Statement Dialog */}
+      {isStatementDialogOpen && statementItem && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+          <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left">
+            <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0">
+              <div>
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Account ledger</span>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-600" />
+                  Supplier Payment Statement
+                </h3>
+              </div>
+              <button 
+                onClick={() => { setIsStatementDialogOpen(false); setStatementItem(null); }}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors border-none bg-transparent cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              {(() => {
+                const stmtGross = statementItem.totalCost !== undefined && statementItem.totalCost !== null ? Number(statementItem.totalCost) : (Number(statementItem.pricePerMeter) || 0) * (Number(statementItem.quantity) || 0);
+                const stmtPaid = Number(statementItem.paidAmount) || 0;
+                const stmtPending = Math.max(0, stmtGross - stmtPaid);
+
+                // Search through expenses to match this lot
+                const stmtPayments = expenses.filter(exp => 
+                  exp.notes && (
+                    exp.notes.includes(statementItem.id) || 
+                    exp.notes.toLowerCase().includes(statementItem.id.toLowerCase())
+                  )
+                );
+
+                const formatDateTime = (createdAt: string, fallbackDate: string) => {
+                  if (!createdAt) {
+                    try {
+                      const d = new Date(fallbackDate);
+                      if (isNaN(d.getTime())) return { date: fallbackDate, time: '—' };
+                      const dateStr = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                      return { date: dateStr, time: '—' };
+                    } catch {
+                      return { date: fallbackDate, time: '—' };
+                    }
+                  }
+                  try {
+                    const d = new Date(createdAt);
+                    if (isNaN(d.getTime())) return { date: fallbackDate, time: '—' };
+                    const dateStr = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    return { date: dateStr, time: timeStr };
+                  } catch (e) {
+                    return { date: fallbackDate, time: '—' };
+                  }
+                };
+
+                return (
+                  <>
+                    {/* Header Details summary */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Supplier details</p>
+                        <p className="text-base font-black text-slate-800">{statementItem.supplierName}</p>
+                        <p className="text-slate-500">Lot reference: <span className="font-bold text-indigo-600">{statementItem.id}</span></p>
+                      </div>
+                      <div className="space-y-1 md:text-right">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Purchase context</p>
+                        <p className="text-slate-700 font-semibold">{statementItem.fabricType} {statementItem.productGroupName ? `(${statementItem.productGroupName})` : ''}</p>
+                        <p className="text-slate-500 font-mono">Date: {statementItem.entryDate}</p>
+                      </div>
+                    </div>
+
+                    {/* Cost summary card grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="p-4 bg-indigo-50/40 rounded-2xl border border-indigo-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-indigo-600 tracking-wider">Net Amount</p>
+                        <p className="text-lg font-black text-slate-800">₹{stmtGross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-emerald-700 tracking-wider">Total Paid</p>
+                        <p className="text-lg font-black text-emerald-700">₹{stmtPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-rose-700 tracking-wider">Remaining Due</p>
+                        <p className="text-lg font-black text-rose-700">₹{stmtPending.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                    </div>
+
+                    {/* Timeline List */}
+                    <div className="space-y-3.5">
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 select-none">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        Supplier Payment Timeline Logs
+                      </h4>
+
+                      {stmtPayments.length === 0 ? (
+                        <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-3xl p-6">
+                          <Coins className="w-10 h-10 text-slate-300 mx-auto mb-2.5" />
+                          <p className="text-xs font-bold text-slate-400 uppercase">No transactions logged for this lot</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">Use the "Pay/Manage" desk to record invoice payments.</p>
+                        </div>
+                      ) : (
+                        <div className="relative border-l border-slate-100 pl-5 ml-2.5 space-y-5">
+                          {stmtPayments.map((exp, idx) => {
+                            const { date: dStr, time: tStr } = formatDateTime(exp.createdAt || '', exp.date);
+                            return (
+                              <div key={exp.id || idx} className="relative animate-in fade-in duration-300">
+                                {/* Timeline Bullet dot */}
+                                <div className="absolute -left-[26px] top-1 w-3 h-3 rounded-full bg-indigo-600 border-2 border-white ring-4 ring-indigo-50" />
+                                
+                                <div className="bg-slate-50 hover:bg-slate-50/80 border border-slate-100 rounded-2xl p-4 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-bold text-slate-700">{dStr}</span>
+                                      {tStr !== '—' && (
+                                        <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-1.5 py-0.5 rounded-md font-mono flex items-center gap-1">
+                                          <Clock className="w-2.5 h-2.5" /> {tStr}
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] text-slate-400 font-mono font-bold bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                        {exp.paymentMode || 'Bank Transfer'}
+                                      </span>
+                                    </div>
+                                    <p className="text-slate-500 font-medium">{exp.notes || 'Payment installation'}</p>
+                                  </div>
+                                  <div className="sm:text-right shrink-0">
+                                    <span className="text-xs text-slate-400 font-semibold block">Paid Amount</span>
+                                    <span className="text-sm font-black text-emerald-600">₹{exp.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {/* Actions */}
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex-1 py-4 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-colors border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  Print Statement Ledger
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setIsStatementDialogOpen(false); setStatementItem(null); }}
+                  className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors border-none cursor-pointer"
+                >
+                  Dismiss / Back
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overall Supplier Statement Dialog */}
+      {isOverallSupplierStatementOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left">
+            <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0">
+              <div>
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Statement Ledger</span>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-600" />
+                  Supplier Account Statement
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsOverallSupplierStatementOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors border-none bg-transparent cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              {(() => {
+                const stmtGross = supplierReportData.summary.totalPurchases;
+                const stmtPaid = supplierReportData.summary.totalPaid;
+                const stmtPending = supplierReportData.summary.totalPending;
+                const totalLots = supplierReportData.summary.totalLots;
+
+                // Match relevant expenses/payments
+                const stmtPayments = expenses.filter(exp => {
+                  return supplierReportData.items.some(lot => 
+                    exp.notes && (
+                      exp.notes.includes(lot.id) || 
+                      exp.notes.toLowerCase().includes(lot.id.toLowerCase())
+                    )
+                  ) || (selectedSupplier !== 'All' && exp.notes && exp.notes.toLowerCase().includes(selectedSupplier.toLowerCase()));
+                }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                const formatDateTime = (createdAt: string, fallbackDate: string) => {
+                  if (!createdAt) {
+                    try {
+                      const d = new Date(fallbackDate);
+                      if (isNaN(d.getTime())) return { date: fallbackDate, time: '—' };
+                      const dateStr = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                      return { date: dateStr, time: '—' };
+                    } catch {
+                      return { date: fallbackDate, time: '—' };
+                    }
+                  }
+                  try {
+                    const d = new Date(createdAt);
+                    if (isNaN(d.getTime())) return { date: fallbackDate, time: '—' };
+                    const dateStr = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    return { date: dateStr, time: timeStr };
+                  } catch (e) {
+                    return { date: fallbackDate, time: '—' };
+                  }
+                };
+
+                return (
+                  <>
+                    {/* Header Details summary */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Account statement for</p>
+                        <p className="text-lg font-black text-slate-800">
+                          {selectedSupplier === 'All' ? 'All Active Suppliers' : selectedSupplier}
+                        </p>
+                        <p className="text-slate-500 font-semibold">
+                          Period: <span className="font-bold text-indigo-600">{startDate || 'Anytime'}</span> to <span className="font-bold text-indigo-600">{endDate || 'Anytime'}</span>
+                        </p>
+                      </div>
+                      <div className="space-y-1 md:text-right">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">System Metadata</p>
+                        <p className="text-slate-700 font-bold">Company: {companyName}</p>
+                        <p className="text-slate-500 font-mono">Statement generated on {new Date().toLocaleDateString('en-IN')}</p>
+                      </div>
+                    </div>
+
+                    {/* Cost summary card grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="p-4 bg-indigo-50/40 rounded-2xl border border-indigo-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-indigo-600 tracking-wider">Gross Purchases</p>
+                        <p className="text-base font-black text-slate-800">₹{stmtGross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-emerald-700 tracking-wider">Total Paid</p>
+                        <p className="text-base font-black text-emerald-700">₹{stmtPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-rose-700 tracking-wider">Remaining Dues</p>
+                        <p className="text-base font-black text-rose-700">₹{stmtPending.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Active Lots</p>
+                        <p className="text-base font-black text-slate-800">{totalLots} Lots</p>
+                      </div>
+                    </div>
+
+                    {/* Tabular summary of matched lots */}
+                    <div className="space-y-3">
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 select-none">
+                        <Package className="w-3.5 h-3.5 text-slate-400" />
+                        Matched Lots & Valuation Audit
+                      </h4>
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[220px] overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
+                            <tr>
+                              <th className="py-2.5 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Lot ID</th>
+                              <th className="py-2.5 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Supplier</th>
+                              <th className="py-2.5 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Raw Material / Fabric</th>
+                              <th className="py-2.5 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Net Amount</th>
+                              <th className="py-2.5 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Paid</th>
+                              <th className="py-2.5 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Pending</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {supplierReportData.items.map((lot, lIdx) => {
+                              const lotGross = lot.totalCost !== undefined && lot.totalCost !== null ? Number(lot.totalCost) : (Number(lot.pricePerMeter) || 0) * (Number(lot.quantity) || 0);
+                              const lotPaid = Number(lot.paidAmount) || 0;
+                              const lotPending = Math.max(0, lotGross - lotPaid);
+                              return (
+                                <tr key={lot.id || lIdx} className="hover:bg-slate-50/50">
+                                  <td className="py-2 px-4 font-bold text-indigo-600">{lot.id}</td>
+                                  <td className="py-2 px-4 text-slate-600 font-semibold">{lot.supplierName}</td>
+                                  <td className="py-2 px-4 text-slate-500">
+                                    <span className="capitalize font-medium text-slate-700">{lot.rawMaterialType || 'cloth'}</span>
+                                    {lot.fabricType && lot.fabricType.toLowerCase() !== (lot.rawMaterialType || 'cloth').toLowerCase() && ` (${lot.fabricType})`}
+                                  </td>
+                                  <td className="py-2 px-4 text-right font-bold text-slate-800">₹{lotGross.toLocaleString('en-IN')}</td>
+                                  <td className="py-2 px-4 text-right font-semibold text-emerald-600">₹{lotPaid.toLocaleString('en-IN')}</td>
+                                  <td className="py-2 px-4 text-right font-bold text-rose-500">₹{lotPending.toLocaleString('en-IN')}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Chronological payment list */}
+                    <div className="space-y-3.5">
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 select-none">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        Transactions History (Date & Time logs)
+                      </h4>
+
+                      {stmtPayments.length === 0 ? (
+                        <div className="text-center py-8 border border-dashed border-slate-100 rounded-3xl p-6">
+                          <Coins className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-[11px] font-bold text-slate-400 uppercase">No individual payments found in this context</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[220px] overflow-y-auto custom-scrollbar">
+                          {stmtPayments.map((exp, idx) => {
+                            const { date: dStr, time: tStr } = formatDateTime(exp.createdAt || '', exp.date);
+                            return (
+                              <div key={exp.id || idx} className="bg-slate-50 hover:bg-slate-50/80 border border-slate-100 rounded-2xl p-3.5 transition-all flex items-center justify-between gap-3 text-xs">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-slate-700">{dStr}</span>
+                                    {tStr !== '—' && (
+                                      <span className="text-[9px] text-indigo-500 font-bold bg-indigo-50 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                        <Clock className="w-2.5 h-2.5" /> {tStr}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]" title={exp.notes}>
+                                    {exp.notes || 'Payment installation'}
+                                  </p>
+                                  <span className="text-[9px] text-slate-400 font-mono font-bold bg-slate-100 px-1 rounded-md">
+                                    {exp.paymentMode || 'Bank Transfer'}
+                                  </span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="text-[9px] text-slate-400 font-semibold block">Amount</span>
+                                  <span className="font-black text-emerald-600">₹{exp.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {/* Actions */}
+              <div className="pt-4 flex gap-3 print:hidden">
+                <button 
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex-1 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  <Printer className="w-4 h-4" />
+                  Print / Download Statement
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setIsOverallSupplierStatementOpen(false)}
+                  className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors border-none cursor-pointer"
+                >
+                  Dismiss / Back
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
