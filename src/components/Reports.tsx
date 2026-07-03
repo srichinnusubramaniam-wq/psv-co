@@ -155,6 +155,7 @@ export default function Reports() {
   const [statementItem, setStatementItem] = useState<any | null>(null);
   const [isOverallSupplierStatementOpen, setIsOverallSupplierStatementOpen] = useState(false);
   const [isOverallCustomerStatementOpen, setIsOverallCustomerStatementOpen] = useState(false);
+  const isModalOpen = isOverallSupplierStatementOpen || isOverallCustomerStatementOpen;
 
   // Reload data from localstorage
   const loadData = () => {
@@ -818,7 +819,7 @@ export default function Reports() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 max-w-[1500px] mx-auto pb-12 print:bg-white print:p-0">
+    <div className={`space-y-8 animate-in fade-in duration-500 max-w-[1500px] mx-auto pb-12 print:bg-white print:p-0 ${isModalOpen ? '' : 'printable-report'}`}>
       
       {/* Header section with print layout hiding */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 print:hidden">
@@ -1024,7 +1025,7 @@ export default function Reports() {
       </div>
 
       {/* --- Print Mode Only Header (Hidden on normal screen) --- */}
-      <div className="hidden print:block border-b-2 border-slate-900 pb-5 mb-8">
+      <div className={`hidden print:block border-b-2 border-slate-900 pb-5 mb-8 ${isModalOpen ? 'print:hidden' : ''}`}>
         <div className="flex justify-between items-end">
           <div>
             <h1 className="text-3xl font-black text-slate-940 tracking-tight">{companyName.toUpperCase()} AUDIT LOG</h1>
@@ -1040,7 +1041,7 @@ export default function Reports() {
       </div>
 
       {/* --- Dynamic Report Output View --- */}
-      <div className="print:bg-white">
+      <div className={`print:bg-white ${isModalOpen ? 'print:hidden' : ''}`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={selectedReport}
@@ -2066,7 +2067,7 @@ export default function Reports() {
       {/* Overall Supplier Statement Dialog */}
       {isOverallSupplierStatementOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
-          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left">
+          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left invoice-print-container print:max-h-none print:overflow-visible print:h-auto print:border-none print:shadow-none print:p-6">
             <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0">
               <div>
                 <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Statement Ledger</span>
@@ -2084,7 +2085,7 @@ export default function Reports() {
               </button>
             </div>
 
-            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar print:max-h-none print:overflow-visible print:h-auto print:p-0">
               {(() => {
                 const stmtGross = supplierReportData.summary.totalPurchases;
                 const stmtPaid = supplierReportData.summary.totalPaid;
@@ -2169,7 +2170,7 @@ export default function Reports() {
                         <Package className="w-3.5 h-3.5 text-slate-400" />
                         Matched Lots & Valuation Audit
                       </h4>
-                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[220px] overflow-y-auto custom-scrollbar">
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[220px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
                         <table className="w-full text-xs">
                           <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
                             <tr>
@@ -2218,7 +2219,7 @@ export default function Reports() {
                           <p className="text-[11px] font-bold text-slate-400 uppercase">No individual payments found in this context</p>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[220px] overflow-y-auto custom-scrollbar">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[220px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
                           {stmtPayments.map((exp, idx) => {
                             const { date: dStr, time: tStr } = formatDateTime(exp.createdAt || '', exp.date);
                             return (
@@ -2279,7 +2280,7 @@ export default function Reports() {
       {/* Overall Customer Statement Dialog */}
       {isOverallCustomerStatementOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
-          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left">
+          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left invoice-print-container print:max-h-none print:overflow-visible print:h-auto print:border-none print:shadow-none print:p-6">
             <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0">
               <div>
                 <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Statement Ledger</span>
@@ -2297,7 +2298,7 @@ export default function Reports() {
               </button>
             </div>
 
-            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar print:max-h-none print:overflow-visible print:h-auto print:p-0">
               {(() => {
                 const stmtInvoices = invoices.filter(inv => {
                   const matchRange = isWithinRange(inv.date);
@@ -2373,7 +2374,7 @@ export default function Reports() {
                         <FileText className="w-3.5 h-3.5 text-slate-400" />
                         Invoices Billing Records
                       </h4>
-                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[180px] overflow-y-auto custom-scrollbar">
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[180px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
                         <table className="w-full text-xs">
                           <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
                             <tr>
@@ -2425,7 +2426,7 @@ export default function Reports() {
                           <p className="text-[11px] font-bold text-slate-400 uppercase">No receipt records found in this context</p>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[180px] overflow-y-auto custom-scrollbar">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[180px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
                           {incomesReportData.items.map((inc, idx) => {
                             return (
                               <div key={inc.id || idx} className="bg-slate-50 hover:bg-slate-50/80 border border-slate-100 rounded-2xl p-3.5 transition-all flex items-center justify-between gap-3 text-xs">
