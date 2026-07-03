@@ -702,11 +702,17 @@ export default function Inventory() {
                           >
                             {item.id}
                           </button>
-                          <p className="text-xs font-bold text-indigo-600">
-                            {item.fabricType} {item.productGroupName ? `(${item.productGroupName})` : ''}
+                          <p className="text-xs font-bold text-indigo-600 flex items-center gap-1.5 flex-wrap">
+                            <span className="capitalize">{item.rawMaterialType || 'cloth'}</span>
+                            {item.fabricType && item.fabricType.toLowerCase() !== (item.rawMaterialType || 'cloth').toLowerCase() && (
+                              <span className="text-slate-500 font-semibold text-[11px]">({item.fabricType})</span>
+                            )}
+                            {item.productGroupName && (
+                              <span className="text-slate-400 font-normal text-[10px]">({item.productGroupName})</span>
+                            )}
                           </p>
                           <p className="text-[10px] text-slate-400 font-medium">{item.entryDate}</p>
-                          <p className="text-[10px] text-slate-400 font-medium">From: {item.supplierName}</p>
+                          <p className="text-[10px] text-slate-400 font-medium">From: <span className="font-bold text-slate-700">{item.supplierName}</span></p>
                         </div>
                       </div>
                     </td>
