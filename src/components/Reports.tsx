@@ -154,6 +154,7 @@ export default function Reports() {
   const [isStatementDialogOpen, setIsStatementDialogOpen] = useState(false);
   const [statementItem, setStatementItem] = useState<any | null>(null);
   const [isOverallSupplierStatementOpen, setIsOverallSupplierStatementOpen] = useState(false);
+  const [isOverallCustomerStatementOpen, setIsOverallCustomerStatementOpen] = useState(false);
 
   // Reload data from localstorage
   const loadData = () => {
@@ -1173,9 +1174,18 @@ export default function Reports() {
               <>
                 {/* 2. List component */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
-                    <h3 className="text-sm font-black text-slate-800 uppercase">Customer Receipts Audit Stream</h3>
-                    <span className="text-[10px] font-black text-slate-400 uppercase font-mono">{incomesReportData.items.length} records</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-50 mb-4 select-none">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase">Customer Receipts Audit Stream</h3>
+                      <p className="text-[10px] font-semibold text-slate-400 mt-0.5">{incomesReportData.items.length} records matched</p>
+                    </div>
+                    <button
+                      onClick={() => setIsOverallCustomerStatementOpen(true)}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 border-none text-white font-bold text-xs rounded-xl shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto"
+                    >
+                      <FileText className="w-4 h-4" />
+                      View Statement
+                    </button>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -1591,22 +1601,13 @@ export default function Reports() {
                                 </div>
                               </td>
                               <td className="py-4 px-4 text-center print:hidden">
-                                <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
-                                  <button
-                                    onClick={() => openPaymentDialog(item)}
-                                    className="w-full sm:w-auto px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border-none text-indigo-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                  >
-                                    <Coins className="w-3.5 h-3.5" />
-                                    Pay/Manage
-                                  </button>
-                                  <button
-                                    onClick={() => { setStatementItem(item); setIsStatementDialogOpen(true); }}
-                                    className="w-full sm:w-auto px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center justify-center gap-1"
-                                  >
-                                    <FileText className="w-3.5 h-3.5 text-slate-500" />
-                                    View Statement
-                                  </button>
-                                </div>
+                                <button
+                                  onClick={() => openPaymentDialog(item)}
+                                  className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 border-none text-indigo-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
+                                >
+                                  <Coins className="w-3.5 h-3.5" />
+                                  Pay/Manage
+                                </button>
                               </td>
                             </tr>
                           );
@@ -2265,6 +2266,210 @@ export default function Reports() {
                 <button 
                   type="button"
                   onClick={() => setIsOverallSupplierStatementOpen(false)}
+                  className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors border-none cursor-pointer"
+                >
+                  Dismiss / Back
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overall Customer Statement Dialog */}
+      {isOverallCustomerStatementOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left">
+            <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0">
+              <div>
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Statement Ledger</span>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-600" />
+                  Customer Account Statement
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsOverallCustomerStatementOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors border-none bg-transparent cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              {(() => {
+                const stmtInvoices = invoices.filter(inv => {
+                  const matchRange = isWithinRange(inv.date);
+                  const buyerName = inv.buyer?.name || '';
+                  const matchCustomer = selectedCustomer === 'All' ||
+                    (buyerName && buyerName.trim().toUpperCase() === selectedCustomer.trim().toUpperCase());
+                  const matchSearch = searchQuery === '' ||
+                    buyerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (inv.invoiceNo && inv.invoiceNo.toLowerCase().includes(searchQuery.toLowerCase()));
+                  return matchRange && matchCustomer && matchSearch;
+                });
+
+                const totalBilled = stmtInvoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+                const totalCollected = stmtInvoices.reduce((sum, inv) => sum + (Number(inv.paidAmount) || 0), 0);
+                const totalReceivable = stmtInvoices.reduce((sum, inv) => sum + Math.max(0, (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0)), 0);
+                const totalReceipts = incomesReportData.totalAmount;
+
+                const activeCustomerObj = selectedCustomer !== 'All' 
+                  ? customers.find(c => c.name.trim().toUpperCase() === selectedCustomer.trim().toUpperCase()) 
+                  : null;
+
+                return (
+                  <>
+                    {/* Header Details summary */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Customer details</p>
+                        <p className="text-lg font-black text-slate-800">
+                          {selectedCustomer === 'All' ? 'All Active Customers' : selectedCustomer}
+                        </p>
+                        {activeCustomerObj && (
+                          <div className="text-[11px] text-slate-500 space-y-0.5 font-medium">
+                            <p>Cust ID: <span className="font-bold text-slate-700">{activeCustomerObj.id}</span></p>
+                            {activeCustomerObj.phone && <p>Phone: {activeCustomerObj.phone}</p>}
+                            {activeCustomerObj.gstin && <p>GSTIN: {activeCustomerObj.gstin}</p>}
+                            <p>Opening Balance: <span className="font-bold text-amber-600">₹{(activeCustomerObj.openingBalance || 0).toLocaleString('en-IN')}</span></p>
+                          </div>
+                        )}
+                        <p className="text-slate-500 font-semibold pt-1">
+                          Period: <span className="font-bold text-indigo-600">{startDate || 'Anytime'}</span> to <span className="font-bold text-indigo-600">{endDate || 'Anytime'}</span>
+                        </p>
+                      </div>
+                      <div className="space-y-1 md:text-right self-start md:self-auto">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Company Identity</p>
+                        <p className="text-slate-700 font-bold">{companyName}</p>
+                        <p className="text-slate-500 font-mono">Statement generated on {new Date().toLocaleDateString('en-IN')}</p>
+                      </div>
+                    </div>
+
+                    {/* Cost summary card grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="p-4 bg-indigo-50/40 rounded-2xl border border-indigo-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-indigo-600 tracking-wider">Gross Billed (Sales)</p>
+                        <p className="text-base font-black text-slate-800">₹{totalBilled.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-emerald-700 tracking-wider">Invoiced Paid</p>
+                        <p className="text-base font-black text-emerald-700">₹{totalCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-rose-700 tracking-wider">Net Dues</p>
+                        <p className="text-base font-black text-rose-700">₹{totalReceivable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-emerald-50 bg-opacity-30 rounded-2xl border border-emerald-100 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-teal-800 tracking-wider">Total Received (Receipts)</p>
+                        <p className="text-base font-black text-teal-800">₹{totalReceipts.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                    </div>
+
+                    {/* Tabular summary of matched invoices */}
+                    <div className="space-y-3">
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 select-none">
+                        <FileText className="w-3.5 h-3.5 text-slate-400" />
+                        Invoices Billing Records
+                      </h4>
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[180px] overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
+                            <tr>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Invoice No</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Date</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Customer</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Net Amount</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Paid</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Pending</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {stmtInvoices.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="text-center py-6 text-slate-400 text-[11px] font-semibold">No invoices matched this selection</td>
+                              </tr>
+                            ) : (
+                              stmtInvoices.map((inv, lIdx) => {
+                                const total = Number(inv.totalAmount) || 0;
+                                const paid = Number(inv.paidAmount) || 0;
+                                const pending = Math.max(0, total - paid);
+                                return (
+                                  <tr key={inv.id || lIdx} className="hover:bg-slate-50/50">
+                                    <td className="py-2 px-4 font-bold text-indigo-600">#{inv.invoiceNo}</td>
+                                    <td className="py-2 px-4 text-slate-500 font-mono">{inv.date}</td>
+                                    <td className="py-2 px-4 text-slate-700 font-semibold">{inv.buyer?.name || 'Standard Customer'}</td>
+                                    <td className="py-2 px-4 text-right font-bold text-slate-800">₹{total.toLocaleString('en-IN')}</td>
+                                    <td className="py-2 px-4 text-right font-semibold text-emerald-600">₹{paid.toLocaleString('en-IN')}</td>
+                                    <td className="py-2 px-4 text-right font-bold text-rose-500">₹{pending.toLocaleString('en-IN')}</td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Chronological payment list */}
+                    <div className="space-y-3.5">
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 select-none">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        Customer Receipts logs
+                      </h4>
+
+                      {incomesReportData.items.length === 0 ? (
+                        <div className="text-center py-6 border border-dashed border-slate-100 rounded-3xl p-6">
+                          <Coins className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-[11px] font-bold text-slate-400 uppercase">No receipt records found in this context</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[180px] overflow-y-auto custom-scrollbar">
+                          {incomesReportData.items.map((inc, idx) => {
+                            return (
+                              <div key={inc.id || idx} className="bg-slate-50 hover:bg-slate-50/80 border border-slate-100 rounded-2xl p-3.5 transition-all flex items-center justify-between gap-3 text-xs">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-slate-700 font-mono">{inc.date}</span>
+                                    <span className="text-[9px] text-indigo-500 font-bold bg-indigo-50 px-1.5 py-0.5 rounded uppercase">
+                                      {inc.categoryName}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]" title={inc.notes}>
+                                    {inc.notes || 'No description notes'}
+                                  </p>
+                                  <span className="text-[9px] text-slate-400 font-mono font-bold bg-slate-100 px-1 rounded-md">
+                                    {inc.paymentMode || 'Cash'}
+                                  </span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="text-[9px] text-slate-400 font-semibold block">Amount</span>
+                                  <span className="font-black text-emerald-600">₹{inc.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {/* Actions */}
+              <div className="pt-4 flex gap-3 print:hidden">
+                <button 
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex-1 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer border-none"
+                >
+                  <Printer className="w-4 h-4" />
+                  Print / Download Statement
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setIsOverallCustomerStatementOpen(false)}
                   className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors border-none cursor-pointer"
                 >
                   Dismiss / Back
