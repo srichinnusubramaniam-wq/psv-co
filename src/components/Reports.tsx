@@ -134,6 +134,7 @@ export default function Reports() {
   const [godowns, setGodowns] = useState<any[]>([]);
   const [selectedGodown, setSelectedGodown] = useState<string>('All');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('All');
+  const [selectedCustomer, setSelectedCustomer] = useState<string>('All');
   const [companyName, setCompanyName] = useState('P.S.V & CO');
 
   // Supplier Payment Modal State
@@ -318,17 +319,19 @@ export default function Reports() {
   const incomesReportData = useMemo(() => {
     const filtered = incomes.filter(inc => {
       const matchRange = isWithinRange(inc.date);
+      const matchCustomer = selectedCustomer === 'All' || 
+        (inc.customerName && inc.customerName.trim().toUpperCase() === selectedCustomer.trim().toUpperCase());
       const matchSearch = searchQuery === '' ||
         inc.categoryName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (inc.customerName && inc.customerName.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (inc.notes && inc.notes.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchRange && matchSearch;
+      return matchRange && matchCustomer && matchSearch;
     });
 
     const totalAmount = filtered.reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
 
     return { items: filtered, totalAmount };
-  }, [incomes, startDate, endDate, searchQuery]);
+  }, [incomes, startDate, endDate, searchQuery, selectedCustomer]);
 
 
   // 4. Inventory Report Calculations 
@@ -847,13 +850,11 @@ export default function Reports() {
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-1">
           <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest px-2.5 mb-3">Ledger Modules</p>
           
-          {([ 'sales', 'income', 'inventory', 'production', 'supplier', 'godown' ] as const).map((type) => {
+          {([ 'sales', 'income', 'supplier', 'godown' ] as const).map((type) => {
             const isActive = selectedReport === type;
             const meta = {
               sales: { label: 'Sales & Invoices', desc: 'Invoiced orders, GST breakdown & dues', icon: FileText, color: 'text-indigo-600' },
-              income: { label: 'Other Income Logs', desc: 'Capital inputs & secondary incomes', icon: TrendingUp, color: 'text-emerald-500' },
-              inventory: { label: 'Inventory Stock Assets', desc: 'Fabric warehouse & valuation audit', icon: Package, color: 'text-amber-500' },
-              production: { label: 'Production Workflows', desc: 'Fabric delivery & supervisor assignments', icon: Factory, color: 'text-sky-500' },
+              income: { label: 'Customer Receipts', desc: 'Customer payments & invoice receipts', icon: TrendingUp, color: 'text-emerald-500' },
               supplier: { label: 'Supplier Ledger', desc: 'Vendor transactions & payment desk dues', icon: Coins, color: 'text-amber-500' },
               godown: { label: 'Godown Stock Ledger', desc: 'Warehousing stock assets & transfers', icon: Layers, color: 'text-violet-600' }
             }[type];
@@ -895,7 +896,7 @@ export default function Reports() {
 
           <div className={cn(
             "grid grid-cols-1 gap-6 items-end",
-            (selectedReport === 'godown' || selectedReport === 'supplier') ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-3"
+            (selectedReport === 'godown' || selectedReport === 'supplier' || selectedReport === 'income') ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-3"
           )}>
             <div className="space-y-1.5">
               <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
@@ -952,6 +953,24 @@ export default function Reports() {
                   <option value="All">All Suppliers</option>
                   {suppliers.map(s => (
                     <option key={s.id || s.name} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedReport === 'income' && (
+              <div className="space-y-1.5 animate-in fade-in duration-200">
+                <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                  <Users className="w-3 h-3 text-slate-400" /> Choose Customer
+                </label>
+                <select
+                  value={selectedCustomer}
+                  onChange={(e) => setSelectedCustomer(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all cursor-pointer"
+                >
+                  <option value="All">All Customers</option>
+                  {customers.map(c => (
+                    <option key={c.id || c.name} value={c.name}>{c.name}</option>
                   ))}
                 </select>
               </div>
@@ -1148,7 +1167,7 @@ export default function Reports() {
                 {/* 2. List component */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
-                    <h3 className="text-sm font-black text-slate-800 uppercase">Auxiliary Incomes Audit Stream</h3>
+                    <h3 className="text-sm font-black text-slate-800 uppercase">Customer Receipts Audit Stream</h3>
                     <span className="text-[10px] font-black text-slate-400 uppercase font-mono">{incomesReportData.items.length} records</span>
                   </div>
 
