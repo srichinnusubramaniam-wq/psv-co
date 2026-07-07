@@ -14,7 +14,9 @@ import {
   Users,
   ArrowDownLeft,
   ArrowDownCircle,
-  FileText
+  FileText,
+  History,
+  Printer
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 
@@ -42,6 +44,17 @@ export default function CustomerReceipts() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState('All');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1); // First of this month
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [isOverallCustomerStatementOpen, setIsOverallCustomerStatementOpen] = useState(false);
+  const [companyName, setCompanyName] = useState('P.S.V & CO');
   
   const [formData, setFormData] = useState<Partial<IncomeRecord>>({
     categoryId: 'INC-CAT-002', // Customer Payment
@@ -83,7 +96,16 @@ export default function CustomerReceipts() {
     // Load invoices
     const savedInvoices = localStorage.getItem('inven_generated_invoices');
     if (savedInvoices) {
-      try { setInvoices(JSON.parse(savedInvoices)); } catch (e) { console.error(e); }
+       try { setInvoices(JSON.parse(savedInvoices)); } catch (e) { console.error(e); }
+    }
+
+    try {
+      const settings = JSON.parse(localStorage.getItem('inven_settings') || '{}');
+      if (settings.companyName) {
+        setCompanyName(settings.companyName);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -281,8 +303,34 @@ export default function CustomerReceipts() {
     setDeleteConfirmId(null);
   };
 
+  const isWithinRange = (dateStr: string) => {
+    if (!dateStr) return true;
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return true;
+      const start = startDate ? new Date(startDate) : null;
+      const end = endDate ? new Date(endDate) : null;
+      if (start) {
+        start.setHours(0, 0, 0, 0);
+        if (d < start) return false;
+      }
+      if (end) {
+        end.setHours(23, 59, 59, 999);
+        if (d > end) return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
   // Only show incomes from customer payments
-  const customerIncomes = incomes.filter(b => b && b.customerId);
+  const customerIncomes = incomes.filter(b => {
+    if (!b || !b.customerId) return false;
+    const matchRange = isWithinRange(b.date);
+    const matchCustomer = selectedCustomer === 'All' || b.customerName === selectedCustomer;
+    return matchRange && matchCustomer;
+  });
 
   const filteredIncomes = customerIncomes.filter(b => 
     b && (
@@ -380,17 +428,73 @@ export default function CustomerReceipts() {
         </div>
       </div>
 
-      {/* Search Filter */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Search records by customer name, bill number, or notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#f8faff] border-none rounded-xl py-2.5 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium text-slate-700"
-          />
+      {/* Filters & Actions Bar */}
+      <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Customer Selector */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Filter by Customer</label>
+            <select
+              value={selectedCustomer}
+              onChange={(e) => setSelectedCustomer(e.target.value)}
+              className="w-full bg-[#f8faff] border-none rounded-xl py-2.5 px-4 text-sm outline-none font-semibold text-slate-700 cursor-pointer"
+            >
+              <option value="All">All Active Customers</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Start Date */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Start Date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full bg-[#f8faff] border-none rounded-xl py-2.5 px-4 text-sm outline-none font-semibold text-slate-700 font-mono"
+            />
+          </div>
+
+          {/* End Date */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">End Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full bg-[#f8faff] border-none rounded-xl py-2.5 px-4 text-sm outline-none font-semibold text-slate-700 font-mono"
+            />
+          </div>
+
+          {/* Search Query */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Search Keywords</label>
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search notes, bills..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-[#f8faff] border-none rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none font-medium text-slate-700"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center pt-3 border-t border-slate-50">
+          <p className="text-xs text-slate-400 font-semibold">
+            Showing <span className="text-indigo-600 font-bold">{filteredIncomes.length}</span> records in this selection
+          </p>
+          <button
+            onClick={() => setIsOverallCustomerStatementOpen(true)}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white border-none rounded-xl font-bold text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <FileText className="w-4 h-4" />
+            View Statement
+          </button>
         </div>
       </div>
 
@@ -719,6 +823,206 @@ export default function CustomerReceipts() {
                 className="flex-1 py-3.5 rounded-2xl bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 transition-all active:scale-95 shadow-lg shadow-rose-200"
               >
                 Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overall Customer Statement Dialog */}
+      {isOverallCustomerStatementOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250 invoice-print-parent print:static print:block print:w-full print:h-auto print:bg-white print:p-0">
+          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left invoice-print-container print:max-h-none print:overflow-visible print:h-auto print:border-none print:shadow-none print:p-6">
+            <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0 no-print">
+              <div>
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Statement Ledger</span>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-600" />
+                  Customer Account Statement
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsOverallCustomerStatementOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors border-none bg-transparent cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar print:max-h-none print:overflow-visible print:h-auto print:p-0">
+              {(() => {
+                const stmtInvoices = invoices.filter(inv => {
+                  if (!inv) return false;
+                  const matchRange = isWithinRange(inv.date);
+                  const buyerName = inv.buyer?.name || '';
+                  const matchCustomer = selectedCustomer === 'All' ||
+                    (buyerName && buyerName.trim().toUpperCase() === selectedCustomer.trim().toUpperCase());
+                  const matchSearch = searchQuery === '' ||
+                    buyerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (inv.invoiceNo && inv.invoiceNo.toLowerCase().includes(searchQuery.toLowerCase()));
+                  return matchRange && matchCustomer && matchSearch;
+                });
+
+                const totalBilled = stmtInvoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+                const totalCollected = stmtInvoices.reduce((sum, inv) => sum + (Number(inv.paidAmount) || 0), 0);
+                const totalReceivable = stmtInvoices.reduce((sum, inv) => sum + Math.max(0, (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0)), 0);
+                const totalReceipts = filteredIncomes.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+
+                const activeCustomerObj = selectedCustomer !== 'All' 
+                  ? customers.find(c => c && c.name && c.name.trim().toUpperCase() === selectedCustomer.trim().toUpperCase()) 
+                  : null;
+
+                return (
+                  <>
+                    {/* Header Details summary */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Customer details</p>
+                        <p className="text-lg font-black text-slate-800">
+                          {selectedCustomer === 'All' ? 'All Active Customers' : selectedCustomer}
+                        </p>
+                        {activeCustomerObj && (
+                          <div className="text-[11px] text-slate-500 space-y-0.5 font-medium">
+                            <p>Cust ID: <span className="font-bold text-slate-700">{activeCustomerObj.id}</span></p>
+                            {activeCustomerObj.phone && <p>Phone: {activeCustomerObj.phone}</p>}
+                            {activeCustomerObj.gstin && <p>GSTIN: {activeCustomerObj.gstin}</p>}
+                            <p>Opening Balance: <span className="font-bold text-amber-600">₹{(activeCustomerObj.openingBalance || 0).toLocaleString('en-IN')}</span></p>
+                          </div>
+                        )}
+                        <p className="text-slate-500 font-semibold pt-1">
+                          Period: <span className="font-bold text-indigo-600">{startDate || 'Anytime'}</span> to <span className="font-bold text-indigo-600">{endDate || 'Anytime'}</span>
+                        </p>
+                      </div>
+                      <div className="space-y-1 md:text-right self-start md:self-auto">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Company Identity</p>
+                        <p className="text-slate-700 font-bold">{companyName}</p>
+                        <p className="text-slate-500 font-mono">Statement generated on {new Date().toLocaleDateString('en-IN')}</p>
+                      </div>
+                    </div>
+
+                    {/* Cost summary card grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                      <div className="p-4 bg-indigo-50/40 rounded-2xl border border-indigo-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-indigo-600 tracking-wider">Gross Billed (Sales)</p>
+                        <p className="text-base font-black text-slate-800">₹{totalBilled.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-emerald-700 tracking-wider">Invoiced Paid</p>
+                        <p className="text-base font-black text-emerald-700">₹{totalCollected.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100/50 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-rose-700 tracking-wider">Net Dues</p>
+                        <p className="text-base font-black text-rose-700">₹{totalReceivable.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="p-4 bg-emerald-50 bg-opacity-30 rounded-2xl border border-emerald-100 space-y-1">
+                        <p className="text-[9px] uppercase font-bold text-teal-800 tracking-wider">Total Received (Receipts)</p>
+                        <p className="text-base font-black text-teal-800">₹{totalReceipts.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                    </div>
+
+                    {/* Tabular summary of matched invoices */}
+                    <div className="space-y-3">
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 select-none">
+                        <FileText className="w-3.5 h-3.5 text-slate-400" />
+                        Invoices Billing Records
+                      </h4>
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[180px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
+                            <tr>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Invoice No</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Date</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Customer</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Net Amount</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Paid</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Pending</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {stmtInvoices.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="text-center py-6 text-slate-400 text-[11px] font-semibold">No invoices matched this selection</td>
+                              </tr>
+                            ) : (
+                              stmtInvoices.map((inv, lIdx) => {
+                                const total = Number(inv.totalAmount) || 0;
+                                const paid = Number(inv.paidAmount) || 0;
+                                const pending = Math.max(0, total - paid);
+                                return (
+                                  <tr key={inv.id || lIdx} className="hover:bg-slate-50/50">
+                                    <td className="py-2 px-4 font-bold text-indigo-600">{inv.invoiceNo}</td>
+                                    <td className="py-2 px-4 text-slate-500 font-semibold">{inv.date}</td>
+                                    <td className="py-2 px-4 text-slate-700 font-bold">{inv.buyer?.name || 'Walk-in'}</td>
+                                    <td className="py-2 px-4 text-right font-bold text-slate-800">₹{total.toLocaleString()}</td>
+                                    <td className="py-2 px-4 text-right font-bold text-emerald-600">₹{paid.toLocaleString()}</td>
+                                    <td className="py-2 px-4 text-right font-bold text-rose-600">₹{pending.toLocaleString()}</td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Customer Receipts logs */}
+                    <div className="space-y-3">
+                      <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 select-none">
+                        <History className="w-3.5 h-3.5 text-slate-400" />
+                        Customer Receipts logs
+                      </h4>
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[180px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
+                            <tr>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Receipt ID</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Filing Date</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Customer</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Type</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Payment Mode</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Received Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {filteredIncomes.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="text-center py-6 text-slate-400 text-[11px] font-semibold">No receipt logs found in selection</td>
+                              </tr>
+                            ) : (
+                              filteredIncomes.map((inc, lIdx) => (
+                                <tr key={inc.id || lIdx} className="hover:bg-slate-50/50">
+                                  <td className="py-2 px-4 font-bold text-indigo-600">{inc.id}</td>
+                                  <td className="py-2 px-4 text-slate-500 font-semibold">{inc.date}</td>
+                                  <td className="py-2 px-4 text-slate-700 font-bold">{inc.customerName}</td>
+                                  <td className="py-2 px-4 text-[10px] uppercase font-bold text-amber-600">{inc.allocationType === 'opening_balance' ? 'Opening Balance' : `Bill #${inc.invoiceNo || 'N/A'}`}</td>
+                                  <td className="py-2 px-4 text-slate-600 font-semibold">{inc.paymentMode}</td>
+                                  <td className="py-2 px-4 text-right font-bold text-emerald-600">₹{(inc.amount || 0).toLocaleString()}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <div className="p-8 border-t border-slate-100 flex gap-4 shrink-0 justify-end bg-slate-50 no-print">
+              <button 
+                onClick={() => setIsOverallCustomerStatementOpen(false)}
+                className="px-6 py-3.5 rounded-2xl bg-[#f0f4f8] hover:bg-[#e4ebf3] text-slate-600 font-bold text-sm transition-all border-none cursor-pointer"
+              >
+                Close
+              </button>
+              <button 
+                onClick={() => window.print()}
+                className="px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-100 transition-all flex items-center gap-2 cursor-pointer border-none"
+              >
+                <Printer className="w-4 h-4" />
+                Print / Download Statement
               </button>
             </div>
           </div>

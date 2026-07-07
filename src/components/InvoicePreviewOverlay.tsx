@@ -126,7 +126,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
   })();
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-[200] flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto invoice-print-parent print:static print:block print:w-full print:h-auto print:bg-white print:p-0">
       <div className="bg-white w-full max-w-[850px] shadow-2xl rounded-[10px] overflow-hidden my-8 invoice-print-container">
         {/* Action Bar (Not part of print) */}
         <div className="bg-slate-800 p-4 flex items-center justify-between no-print">

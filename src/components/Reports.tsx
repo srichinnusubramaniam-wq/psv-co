@@ -23,7 +23,8 @@ import {
   Coins,
   Layers,
   Clock,
-  History
+  History,
+  Trash2
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 
@@ -138,6 +139,9 @@ export default function Reports() {
   const [selectedSupplier, setSelectedSupplier] = useState<string>('All');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('All');
   const [companyName, setCompanyName] = useState('P.S.V & CO');
+  const [selectedLedgerType, setSelectedLedgerType] = useState<string>('All');
+  const [ledgerItemToDelete, setLedgerItemToDelete] = useState<any | null>(null);
+  const [isDeleteLedgerOpen, setIsDeleteLedgerOpen] = useState(false);
 
   // Supplier Payment Modal State
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -451,13 +455,24 @@ export default function Reports() {
         p.unit === selectedGodown || 
         (p.type === 'Transfer' && p.toGodown === selectedGodown);
         
+      const isFinished = p.type === 'Finished Goods' || p.status === 'Finished Goods';
+      const isDamage = p.type === 'Damage';
+      const isTransfer = p.type === 'Transfer';
+      
+      let itemType = 'WIP';
+      if (isFinished) itemType = 'Finished Goods';
+      else if (isDamage) itemType = 'Damage';
+      else if (isTransfer) itemType = 'Transfer';
+      
+      const matchesType = selectedLedgerType === 'All' || itemType === selectedLedgerType;
+
       const matchSearch = searchQuery === '' ||
         p.fabricType.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.modelName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (p.toGodown && p.toGodown.toLowerCase().includes(searchQuery.toLowerCase()));
         
-      return matchRange && matchesGodown && matchSearch;
+      return matchRange && matchesGodown && matchesType && matchSearch;
     });
 
     const summary = filtered.reduce((acc, p) => {
@@ -489,7 +504,7 @@ export default function Reports() {
     });
 
     return { items: filtered, summary };
-  }, [production, startDate, endDate, selectedGodown, searchQuery]);
+  }, [production, startDate, endDate, selectedGodown, selectedLedgerType, searchQuery]);
 
 
   // Record Expense Entry on Supplier Payment
@@ -618,6 +633,21 @@ export default function Reports() {
     setPaymentItem(null);
 
     // Trigger local storage sync across tabs
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleDeleteLedgerItem = (item: any) => {
+    setLedgerItemToDelete(item);
+    setIsDeleteLedgerOpen(true);
+  };
+
+  const confirmDeleteLedgerItem = () => {
+    if (!ledgerItemToDelete) return;
+    const updated = production.filter(p => p.id !== ledgerItemToDelete.id);
+    setProduction(updated);
+    localStorage.setItem('inven_production', JSON.stringify(updated));
+    setIsDeleteLedgerOpen(false);
+    setLedgerItemToDelete(null);
     window.dispatchEvent(new Event('storage'));
   };
 
@@ -932,21 +962,39 @@ export default function Reports() {
             </div>
 
             {selectedReport === 'godown' && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
-                  <Layers className="w-3 h-3 text-slate-400" /> Godown Warehouse
-                </label>
-                <select
-                  value={selectedGodown}
-                  onChange={(e) => setSelectedGodown(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all"
-                >
-                  <option value="All">All Godowns</option>
-                  {godowns.map(g => (
-                    <option key={g.id || g.name} value={g.name}>{g.name}</option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                    <Layers className="w-3 h-3 text-slate-400" /> Godown Warehouse
+                  </label>
+                  <select
+                    value={selectedGodown}
+                    onChange={(e) => setSelectedGodown(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all"
+                  >
+                    <option value="All">All Godowns</option>
+                    {godowns.map(g => (
+                      <option key={g.id || g.name} value={g.name}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                    <Filter className="w-3 h-3 text-slate-400" /> Transaction Type
+                  </label>
+                  <select
+                    value={selectedLedgerType}
+                    onChange={(e) => setSelectedLedgerType(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all"
+                  >
+                    <option value="All">All Transactions</option>
+                    <option value="Finished Goods">Finished Goods</option>
+                    <option value="Transfer">Transfer</option>
+                    <option value="Damage">Damage</option>
+                  </select>
+                </div>
+              </>
             )}
 
             {selectedReport === 'supplier' && (
@@ -1649,6 +1697,7 @@ export default function Reports() {
                           <th className="pb-3.5 text-center">Type</th>
                           <th className="pb-3.5 text-center font-mono">Quantity</th>
                           <th className="pb-3.5 text-right">Godown Warehouse</th>
+                          <th className="pb-3.5 text-right no-print">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1693,11 +1742,20 @@ export default function Reports() {
                                 <div className="text-xs font-bold text-slate-700">
                                   {item.unit || 'Unknown'}
                                 </div>
-                                {isTransfer && item.toGodown && (
+                                {item.toGodown && (
                                   <div className="text-[10px] text-indigo-600 font-bold">
                                     → To: {item.toGodown}
                                   </div>
                                 )}
+                              </td>
+                              <td className="py-4 text-right no-print">
+                                <button
+                                  onClick={() => handleDeleteLedgerItem(item)}
+                                  className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all inline-flex items-center justify-center cursor-pointer border-none bg-transparent"
+                                  title="Delete Entry"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </td>
                             </tr>
                           );
@@ -1705,7 +1763,7 @@ export default function Reports() {
 
                         {godownReportData.items.length === 0 && (
                           <tr>
-                            <td colSpan={5} className="text-center py-10">
+                            <td colSpan={6} className="text-center py-10">
                               <p className="text-xs font-black text-slate-400 uppercase select-none">No matched godown transactions in coordinates</p>
                             </td>
                           </tr>
@@ -2066,7 +2124,7 @@ export default function Reports() {
 
       {/* Overall Supplier Statement Dialog */}
       {isOverallSupplierStatementOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250 invoice-print-parent print:static print:block print:w-full print:h-auto print:bg-white print:p-0">
           <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left invoice-print-container print:max-h-none print:overflow-visible print:h-auto print:border-none print:shadow-none print:p-6">
             <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0">
               <div>
@@ -2279,7 +2337,7 @@ export default function Reports() {
 
       {/* Overall Customer Statement Dialog */}
       {isOverallCustomerStatementOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250 invoice-print-parent print:static print:block print:w-full print:h-auto print:bg-white print:p-0">
           <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 text-left invoice-print-container print:max-h-none print:overflow-visible print:h-auto print:border-none print:shadow-none print:p-6">
             <div className="p-8 border-b border-indigo-100 bg-gradient-to-r from-indigo-50/50 to-indigo-50/10 flex items-center justify-between shrink-0">
               <div>
@@ -2476,6 +2534,70 @@ export default function Reports() {
                   Dismiss / Back
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Ledger Item Dialog */}
+      {isDeleteLedgerOpen && ledgerItemToDelete && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 text-left">
+            <div className="p-8 border-b border-rose-100 bg-gradient-to-r from-rose-50/50 to-amber-50/20 flex items-center justify-between shrink-0">
+              <div>
+                <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Warning</span>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
+                  <AlertOctagon className="w-5 h-5 text-rose-600" />
+                  Confirm Delete Ledger Entry
+                </h3>
+              </div>
+              <button 
+                onClick={() => { setIsDeleteLedgerOpen(false); setLedgerItemToDelete(null); }}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors border-none bg-transparent cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-4">
+              <p className="text-sm text-slate-600 font-medium leading-relaxed">
+                Are you sure you want to permanently delete this ledger entry?
+              </p>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5 text-xs">
+                <p className="text-slate-500 font-semibold">
+                  ID: <span className="font-bold text-slate-700">{ledgerItemToDelete.id}</span>
+                </p>
+                <p className="text-slate-500 font-semibold">
+                  Item: <span className="font-bold text-slate-700">{ledgerItemToDelete.modelName}</span>
+                </p>
+                <p className="text-slate-500 font-semibold">
+                  Type: <span className="font-bold text-rose-600 uppercase">{ledgerItemToDelete.type || 'Production'}</span>
+                </p>
+                <p className="text-slate-500 font-semibold">
+                  Quantity: <span className="font-bold text-slate-700">{ledgerItemToDelete.quantity} {ledgerItemToDelete.finishedPieces !== undefined ? 'pcs' : (ledgerItemToDelete.unit === 'KGs' ? 'KGs' : (ledgerItemToDelete.unit === 'Pieces' ? 'pcs' : 'm'))}</span>
+                </p>
+              </div>
+              <p className="text-xs text-rose-500 font-bold">
+                * This will permanently remove this entry from your production records. This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
+              <button 
+                type="button"
+                onClick={() => { setIsDeleteLedgerOpen(false); setLedgerItemToDelete(null); }}
+                className="px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                type="button"
+                onClick={confirmDeleteLedgerItem}
+                className="px-5 py-3 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-colors cursor-pointer border-none shadow-sm"
+              >
+                Permanently Delete
+              </button>
             </div>
           </div>
         </div>

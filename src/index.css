@@ -88,6 +88,8 @@ input[type="number"] {
   }
 
   /* Make sure the invoice print container and reports (and all of their children) are fully visible */
+  .invoice-print-parent,
+  .invoice-print-parent *,
   .invoice-print-container,
   .invoice-print-container *,
   .printable-report,

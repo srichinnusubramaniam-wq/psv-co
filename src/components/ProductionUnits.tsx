@@ -652,7 +652,11 @@ export default function ProductionUnits({
                       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
                         <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                          {statusFilter === 'Finished Goods' ? `Godown: ${item.unit}` : (statusFilter === 'Damage' ? `Godown: ${item.unit}` : `From: ${item.unit}${item.toGodown ? ` → To: ${item.toGodown}` : ''}${item.customerId ? ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}` : ''}`)}
+                          {statusFilter === 'Finished Goods' 
+                            ? `From: ${item.unit}${item.toGodown ? ` → To: ${item.toGodown}` : ''}` 
+                            : (statusFilter === 'Damage' 
+                              ? `From: ${item.unit}${item.toGodown ? ` → To: ${item.toGodown}` : ''}` 
+                              : `From: ${item.unit}${item.toGodown ? ` → To: ${item.toGodown}` : ''}${item.customerId ? ` • ${customers.find(c => c && c.id === item.customerId)?.name || item.customerId}` : ''}`)}
                         </p>
                         {item.productGroupName && (
                           <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black rounded uppercase tracking-wider">
@@ -791,9 +795,9 @@ export default function ProductionUnits({
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Choose Godown dropdown */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Godown</label>
+                    {/* Choose From Godown dropdown */}
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose From Godown</label>
                       <div className="relative">
                         <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
                         <select 
@@ -802,7 +806,30 @@ export default function ProductionUnits({
                           value={formData.unit || ''}
                           onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                         >
-                          <option value="">Select Godown</option>
+                          <option value="">Select From Godown</option>
+                          {unitMaster.filter(u => u && u.id).map(u => (
+                            <option key={u.id} value={u.name}>
+                              {u.location ? `${u.name} (${u.location})` : u.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronRight className="w-4 h-4 rotate-90" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Choose To Godown dropdown */}
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose To Godown</label>
+                      <div className="relative">
+                        <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                        <select 
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                          value={formData.toGodown || ''}
+                          onChange={(e) => setFormData({ ...formData, toGodown: e.target.value })}
+                        >
+                          <option value="">Select To Godown (Optional)</option>
                           {unitMaster.filter(u => u && u.id).map(u => (
                             <option key={u.id} value={u.name}>
                               {u.location ? `${u.name} (${u.location})` : u.name}
@@ -934,9 +961,9 @@ export default function ProductionUnits({
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Choose Godown dropdown */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Godown</label>
+                    {/* Choose From Godown dropdown */}
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose From Godown</label>
                       <div className="relative">
                         <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
                         <select 
@@ -945,7 +972,30 @@ export default function ProductionUnits({
                           value={formData.unit || ''}
                           onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                         >
-                          <option value="">Select Godown</option>
+                          <option value="">Select From Godown</option>
+                          {unitMaster.filter(u => u && u.id).map(u => (
+                            <option key={u.id} value={u.name}>
+                              {u.location ? `${u.name} (${u.location})` : u.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronRight className="w-4 h-4 rotate-90" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Choose To Godown dropdown */}
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose To Godown</label>
+                      <div className="relative">
+                        <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                        <select 
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                          value={formData.toGodown || ''}
+                          onChange={(e) => setFormData({ ...formData, toGodown: e.target.value })}
+                        >
+                          <option value="">Select To Godown (Optional)</option>
                           {unitMaster.filter(u => u && u.id).map(u => (
                             <option key={u.id} value={u.name}>
                               {u.location ? `${u.name} (${u.location})` : u.name}

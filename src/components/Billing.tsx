@@ -179,6 +179,7 @@ export default function Billing() {
 
   // Rates & CGST/SGST/Packing Charges
   const [packingCharges, setPackingCharges] = useState<number>(0);
+  const [overallDiscount, setOverallDiscount] = useState<number>(0);
   const [cgstPercent, setCgstPercent] = useState<number>(2.5);
   const [sgstPercent, setSgstPercent] = useState<number>(2.5);
   const [igstPercent, setIgstPercent] = useState<number>(0);
@@ -451,9 +452,7 @@ export default function Billing() {
     const byGodown: Record<string, number> = {};
     let totalQty = 0;
     matches.forEach(a => {
-      const gName = a.unit || 'Unknown Godown';
       const qty = Number(a.quantity) || 0;
-      byGodown[gName] = (byGodown[gName] || 0) + qty;
       totalQty += qty;
     });
 
@@ -469,7 +468,6 @@ export default function Billing() {
               if (itemProduct && found && itemProduct.id === found.id) {
                 const itemQty = Number(item.quantity) || 0;
                 totalQty += itemQty;
-                byGodown['Current Allocation'] = (byGodown['Current Allocation'] || 0) + itemQty;
               }
             }
           });
@@ -477,6 +475,10 @@ export default function Billing() {
       } catch (err) {
         console.error('Error recovering allocated stock for edit preview', err);
       }
+    }
+
+    if (totalQty > 0) {
+      byGodown['SALEM'] = totalQty;
     }
 
     return { totalQty, byGodown };
@@ -611,27 +613,10 @@ export default function Billing() {
     const updated = billItems.map((item, idx) => {
       if (idx === index) {
         const temp = { ...item, [key]: value };
-        // Recalculate totalCost: Qty * Price - discountCost
-        if (key === 'quantity' || key === 'unitPrice' || key === 'discountCost' || key === 'discountPercentage') {
+        if (key === 'quantity' || key === 'unitPrice') {
           const qty = Number(key === 'quantity' ? value : temp.quantity) || 0;
           const price = Number(key === 'unitPrice' ? value : temp.unitPrice) || 0;
-          let discCost = Number(key === 'discountCost' ? value : temp.discountCost) || 0;
-          let discPct = Number(key === 'discountPercentage' ? value : temp.discountPercentage) || 0;
-
-          if (key === 'discountPercentage') {
-            discCost = parseFloat(((qty * price) * (discPct / 100)).toFixed(2));
-            temp.discountCost = discCost;
-          } else if (key === 'discountCost') {
-            const base = qty * price;
-            discPct = base > 0 ? parseFloat(((discCost / base) * 100).toFixed(2)) : 0;
-            temp.discountPercentage = discPct;
-          } else {
-            // Recalculate discountCost if quantity or price changed
-            discCost = parseFloat(((qty * price) * (discPct / 100)).toFixed(2));
-            temp.discountCost = discCost;
-          }
-
-          temp.totalCost = Math.max(0, (qty * price) - discCost);
+          temp.totalCost = qty * price;
         }
         return temp;
       }
@@ -655,7 +640,7 @@ export default function Billing() {
     const updated = billItems.map((item, idx) => {
       if (idx === index) {
         const qty = item.quantity || 1;
-        const total = Math.max(0, (qty * rate) - (item.discountCost || 0));
+        const total = qty * rate;
         return {
           ...item,
           modelName: modelLabel,
@@ -676,7 +661,8 @@ export default function Billing() {
     const totalQty = billItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
     
     const packing = Number(packingCharges) || 0;
-    const taxableAmount = itemsTotal;
+    const discountAmount = Number(overallDiscount) || 0;
+    const taxableAmount = Math.max(0, itemsTotal - discountAmount);
     const baseForGst = taxableAmount + packing;
 
     const cgst = (!isNonGst && isTamilNadu) ? parseFloat(((baseForGst * cgstPercent) / 100).toFixed(2)) : 0;
@@ -688,6 +674,7 @@ export default function Billing() {
 
     return {
       totalQty,
+      itemsSubtotal: itemsTotal,
       taxableAmount,
       cgst,
       sgst,
@@ -695,7 +682,7 @@ export default function Billing() {
       totalAmount,
       amountInWords: words
     };
-  }, [billItems, packingCharges, cgstPercent, sgstPercent, igstPercent, roundOff, isTamilNadu, isNonGst]);
+  }, [billItems, packingCharges, overallDiscount, cgstPercent, sgstPercent, igstPercent, roundOff, isTamilNadu, isNonGst]);
 
   // Construct current invoice object from form state
   const getInvoiceFromForm = (): GeneratedInvoice => {
@@ -724,7 +711,7 @@ export default function Billing() {
       },
       items: billItems,
       totalQty,
-      discount: 0,
+      discount: Number(overallDiscount),
       taxableAmount,
       cgst,
       sgst,
@@ -929,6 +916,7 @@ export default function Billing() {
     };
     setBillItems([defaultItem]);
     setPackingCharges(0);
+    setOverallDiscount(0);
     setRoundOff(0);
     setIgstPercent(0);
     setIsNonGst(false);
@@ -972,6 +960,7 @@ export default function Billing() {
 
     setBillItems(inv.items || []);
     setPackingCharges(inv.packingCharges || 0);
+    setOverallDiscount(inv.discount || 0);
     setCgstPercent(inv.cgstPercent !== undefined ? inv.cgstPercent : 2.5);
     setSgstPercent(inv.sgstPercent !== undefined ? inv.sgstPercent : 2.5);
     setIgstPercent(inv.igst !== undefined ? (inv.igst > 0 ? 5.0 : 0) : 0);
@@ -984,8 +973,10 @@ export default function Billing() {
   const recalculateInvoiceTotals = (invoice: GeneratedInvoice): GeneratedInvoice => {
     const itemsTotal = invoice.items.reduce((sum: number, item: any) => sum + (Number(item.totalCost) || 0), 0);
     const totalQty = invoice.items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
+    const discount = Number(invoice.discount) || 0;
+    const taxableAmount = Math.max(0, itemsTotal - discount);
     const packing = Number(invoice.packingCharges) || 0;
-    const baseForGst = itemsTotal + packing;
+    const baseForGst = taxableAmount + packing;
 
     const isNonGst = !!invoice.isNonGst;
     
@@ -1031,7 +1022,7 @@ export default function Billing() {
     return {
       ...invoice,
       totalQty,
-      taxableAmount: itemsTotal,
+      taxableAmount: taxableAmount,
       cgstPercent,
       sgstPercent,
       igstPercent,
@@ -1789,16 +1780,14 @@ export default function Billing() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[3%]">S.No</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[32%]">Fabric Model / Description</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[10%]">Style</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[9%]">Godown</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[35%]">Fabric Model / Description</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[11%]">Style</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[10%]">Godown</th>
                     <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[6%]">HSN</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[5%]">Quantity</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[3%]">Unit</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[8%]">Unit Price</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[4%]">Discount (%)</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[5%]">Discount (₹)</th>
-                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[11%]">Amount</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[6%]">Quantity</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-left w-[4%]">Unit</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[9%]">Unit Price</th>
+                    <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-right w-[12%]">Amount</th>
                     <th className="py-3 px-4 text-[11px] font-black text-slate-400 uppercase text-center w-[4%]"></th>
                   </tr>
                 </thead>
@@ -1924,26 +1913,6 @@ export default function Billing() {
                           className="w-full bg-slate-50/50 text-right font-bold text-slate-800 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono"
                         />
                       </td>
-                      <td className="py-2 px-4">
-                        <input 
-                          type="number" 
-                          step="0.01"
-                          value={item.discountPercentage || 0}
-                          onChange={(e) => updateLineItem(index, 'discountPercentage', parseFloat(e.target.value) || 0)}
-                          onWheel={(e) => e.currentTarget.blur()}
-                          placeholder="%"
-                          className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono min-w-[45px]"
-                        />
-                      </td>
-                      <td className="py-2 px-4">
-                        <input 
-                          type="number" 
-                          value={item.discountCost || 0}
-                          onChange={(e) => updateLineItem(index, 'discountCost', parseFloat(e.target.value) || 0)}
-                          onWheel={(e) => e.currentTarget.blur()}
-                          className="w-full bg-slate-50/50 text-right text-xs font-semibold text-slate-500 px-2 py-1.5 outline-none border-b border-dashed border-slate-200 rounded font-mono min-w-[55px]"
-                        />
-                      </td>
                       <td className="py-2 px-4 text-right font-mono font-bold text-slate-800 text-sm">
                         ₹{(item.totalCost || 0).toLocaleString('en-IN')}
                       </td>
@@ -1969,15 +1938,25 @@ export default function Billing() {
             <div className="space-y-4">
               <p className="text-xs font-black text-slate-400 uppercase tracking-wide">Charges & Taxes Configuration</p>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Packing & Handling Charges (₹)</label>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Packing & Handling (₹)</label>
                   <input 
                     type="number" 
                     value={packingCharges}
                     onChange={(e) => setPackingCharges(parseFloat(e.target.value) || 0)}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-2.5 text-sm font-semibold font-mono"
+                    className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Overall Discount (₹)</label>
+                  <input 
+                    type="number" 
+                    value={overallDiscount}
+                    onChange={(e) => setOverallDiscount(parseFloat(e.target.value) || 0)}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
                   />
                 </div>
                 <div>
@@ -1988,7 +1967,7 @@ export default function Billing() {
                     value={roundOff}
                     onChange={(e) => setRoundOff(parseFloat(e.target.value) || 0)}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-2.5 text-sm font-semibold font-mono"
+                    className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
                   />
                 </div>
               </div>
@@ -2047,8 +2026,18 @@ export default function Billing() {
             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-bold text-slate-500">
+                  <span>Items Subtotal:</span>
+                  <span className="font-mono text-slate-700">₹{(billingCalculations.itemsSubtotal || 0).toLocaleString('en-IN')}</span>
+                </div>
+                {overallDiscount > 0 && (
+                  <div className="flex justify-between text-xs font-bold text-emerald-600">
+                    <span>Overall Discount:</span>
+                    <span className="font-mono">-₹{Number(overallDiscount).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs font-bold text-slate-600 border-t border-slate-100 pt-1.5">
                   <span>Taxable Amount:</span>
-                  <span className="font-mono text-slate-700">₹{billingCalculations.taxableAmount.toLocaleString('en-IN')}</span>
+                  <span className="font-mono text-slate-800">₹{billingCalculations.taxableAmount.toLocaleString('en-IN')}</span>
                 </div>
                 {packingCharges > 0 && (
                   <div className="flex justify-between text-xs font-bold text-slate-500">
