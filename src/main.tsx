@@ -4,9 +4,6 @@ import App from './App.tsx';
 import './index.css';
 import { initializeSupabaseSync } from './lib/supabase.ts';
 
-// Initialize Supabase Synchronization
-initializeSupabaseSync();
-
 // Mitigate iframe/sandbox localStorage access blocks
 try {
   const testKey = '__test_local_storage_accessibility__';
@@ -62,6 +59,9 @@ try {
     }
   }
 }
+
+// Initialize Supabase Synchronization (after localStorage/memory redefinition)
+initializeSupabaseSync();
 
 // Ignore benign cross-origin/recharts resize observer exceptions and cross-origin Script errors
 window.addEventListener('error', (event) => {

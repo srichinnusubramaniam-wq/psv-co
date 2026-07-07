@@ -562,14 +562,13 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                       {/* CGST */}
                       <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
                         <span className="flex items-center gap-1 font-bold">
-                          CGST @ (
+                          CGST
                           <EditableInvoiceSelect
                             value={`${previewInvoice.cgstPercent !== undefined ? previewInvoice.cgstPercent : 2.5}%`}
                             onChange={(val) => updatePreviewField('cgstPercent', parseFloat(val.replace('%', '')) || 0)}
                             options={['0%', '1%', '2.5%', '5%', '6%', '9%', '12%', '14%', '18%']}
                             className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
                           />
-                          )
                         </span>
                         <span className="font-black text-right text-[11px]">
                           {(previewInvoice.cgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -579,14 +578,13 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                       {/* SGST */}
                       <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
                         <span className="flex items-center gap-1 font-bold">
-                          SGST @ (
+                          SGST
                           <EditableInvoiceSelect
                             value={`${previewInvoice.sgstPercent !== undefined ? previewInvoice.sgstPercent : 2.5}%`}
                             onChange={(val) => updatePreviewField('sgstPercent', parseFloat(val.replace('%', '')) || 0)}
                             options={['0%', '1%', '2.5%', '5%', '6%', '9%', '12%', '14%', '18%']}
                             className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
                           />
-                          )
                         </span>
                         <span className="font-black text-right text-[11px]">
                           {(previewInvoice.sgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}

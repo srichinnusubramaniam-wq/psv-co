@@ -103,15 +103,15 @@ export interface CustomerMaster {
 }
 
 export default function ProductMaster() {
-  const [activeTab, setActiveTabState] = useState<'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'styles'>(() => {
+  const [activeTab, setActiveTabState] = useState<'models' | 'units' | 'suppliers' | 'customers' | 'transports' | 'styles'>(() => {
     const saved = localStorage.getItem('inven_master_active_tab');
-    if (saved && ['models', 'units', 'suppliers', 'expenses', 'income', 'customers', 'transports', 'styles'].includes(saved)) {
+    if (saved && ['models', 'units', 'suppliers', 'customers', 'transports', 'styles'].includes(saved)) {
       return saved as any;
     }
     return 'models';
   });
 
-  const setActiveTab = (tab: 'models' | 'units' | 'suppliers' | 'expenses' | 'income' | 'customers' | 'transports' | 'styles') => {
+  const setActiveTab = (tab: 'models' | 'units' | 'suppliers' | 'customers' | 'transports' | 'styles') => {
     setActiveTabState(tab);
     localStorage.setItem('inven_master_active_tab', tab);
   };
@@ -1034,24 +1034,6 @@ export default function ProductMaster() {
           )}
         >
           Transports
-        </button>
-        <button 
-          onClick={() => { setActiveTab('income'); setSearchQuery(''); }}
-          className={cn(
-            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-            activeTab === 'income' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          )}
-        >
-          Income
-        </button>
-        <button 
-          onClick={() => { setActiveTab('expenses'); setSearchQuery(''); }}
-          className={cn(
-            "px-6 py-2 rounded-xl text-sm font-bold transition-all",
-            activeTab === 'expenses' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-          )}
-        >
-          Expenses
         </button>
       </div>
 

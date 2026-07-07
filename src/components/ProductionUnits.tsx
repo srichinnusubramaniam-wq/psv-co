@@ -67,7 +67,7 @@ export default function ProductionUnits({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'Transfer' | 'Damage' | 'Finished Goods'>('Transfer');
+  const [statusFilter, setStatusFilter] = useState<'Transfer' | 'Damage' | 'Finished Goods'>('Finished Goods');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, name: string } | null>(null);
   
@@ -301,6 +301,7 @@ export default function ProductionUnits({
             paidAmount,
             paymentStatus,
             paymentDate: paidAmount > 0 ? (formData.paymentDate || a.paymentDate || new Date().toISOString().split('T')[0]) : undefined,
+            productGroupName: item.productGroupName || formData.productGroupName || a.productGroupName || '',
           };
         }
         return a;
@@ -395,7 +396,7 @@ export default function ProductionUnits({
           paidAmount,
           paymentStatus,
           paymentDate: paidAmount > 0 ? (formData.paymentDate || new Date().toISOString().split('T')[0]) : undefined,
-          productGroupName: formData.productGroupName || '',
+          productGroupName: item.productGroupName || formData.productGroupName || '',
         };
       });
 
@@ -583,7 +584,7 @@ export default function ProductionUnits({
 
 
       <div className="flex bg-slate-100 p-1 rounded-2xl w-fit overflow-x-auto max-w-full scrollbar-none">
-        {(['Transfer', 'Damage', 'Finished Goods'] as const).map((status) => (
+        {(['Damage', 'Finished Goods'] as const).map((status) => (
           <button 
             key={status}
             onClick={() => { setStatusFilter(status); setSearchQuery(''); }}
@@ -730,7 +731,7 @@ export default function ProductionUnits({
                               paymentDate: item.paymentDate || new Date().toISOString().split('T')[0],
                               finishedPieces: derivedFinishedPieces,
                               finishedMeters: derivedFinishedMeters,
-                              items: [{ modelName: item.modelName, quantity: totalQty, rate: item.rate, size: item.size || 'XL' }]
+                              items: [{ modelName: item.modelName, quantity: totalQty, rate: item.rate, size: item.size || 'XL', productGroupName: item.productGroupName || '' }]
                             });
                             setIsFormOpen(true);
                           }}
@@ -786,7 +787,7 @@ export default function ProductionUnits({
             <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
               {formData.type === 'Finished Goods' ? (
                 /* FINISHED GOODS ENTRY FORM COMPONENTS */
-                <div className="space-y-6">
+                <div className="space-y-8 animate-in fade-in duration-200">
                   <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
                     <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
                       <Box className="w-4 h-4" />
@@ -794,7 +795,7 @@ export default function ProductionUnits({
                     <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-widest">Finished Goods Details</h4>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Choose From Godown dropdown */}
                     <div className="space-y-2 col-span-1">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose From Godown</label>
@@ -842,8 +843,8 @@ export default function ProductionUnits({
                       </div>
                     </div>
 
-                    {/* Select Date */}
-                    <div className="space-y-2 col-span-full">
+                    {/* Choose Date */}
+                    <div className="space-y-2 col-span-1">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
                       <div className="relative">
                         <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
@@ -856,103 +857,117 @@ export default function ProductionUnits({
                         />
                       </div>
                     </div>
+                  </div>
 
-                    {/* Select Product Description */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Description</label>
-                      <div className="relative">
-                        <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-                        <select 
-                          required
-                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
-                          value={formData.items?.[0]?.modelName || ''}
-                          onChange={(e) => {
-                            const selectedDesc = e.target.value;
-                            const matchedProduct = productMaster.find(p => p && (p.description === selectedDesc || p.name === selectedDesc));
-                            const groupName = matchedProduct?.productGroupName || formData.productGroupName || '';
-                            const updatedItems = [{ 
-                              modelName: selectedDesc, 
-                              quantity: formData.items?.[0]?.quantity || 0, 
-                              rate: matchedProduct?.basePrice || 0, 
-                              size: 'XL',
-                              assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
-                              expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
-                            }];
-                            setFormData({
-                              ...formData,
-                              modelName: selectedDesc,
-                              productGroupName: groupName,
-                              items: updatedItems
-                            });
-                          }}
+                  {/* Products Repeater */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-50">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Product Models</h4>
+                      {!editingId && (
+                        <button 
+                          type="button"
+                          onClick={addItemRow}
+                          className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl hover:bg-emerald-100 transition-colors border border-emerald-100 cursor-pointer"
                         >
-                          <option value="">Select Product Description</option>
-                          {productMaster.filter(p => p && (p.description || p.name)).map(p => {
-                            const label = p.description || p.name;
-                            return (
-                              <option key={p.id || label} value={label}>{label}</option>
-                            );
-                          })}
-                        </select>
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                          <ChevronRight className="w-4 h-4 rotate-90" />
+                          <Plus className="w-3 h-3" />
+                          Add Model
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-6">
+                      {formData.items.map((item: any, index: number) => (
+                        <div key={index} className="bg-slate-50/50 p-6 rounded-[28px] border border-slate-100 space-y-4 relative group transition-all hover:border-emerald-100 hover:shadow-sm">
+                          {formData.items.length > 1 && !editingId && (
+                            <button 
+                              type="button"
+                              onClick={() => removeItemRow(index)}
+                              className="absolute -top-3 -right-3 p-2 bg-white text-slate-400 hover:text-rose-500 rounded-full shadow-md border border-slate-100 transition-all active:scale-90 cursor-pointer"
+                              title="Delete Row"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                            {/* Product Description Select */}
+                            <div className="space-y-2 md:col-span-5">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Product Description</label>
+                              <div className="relative">
+                                <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                                <select 
+                                  required
+                                  className="w-full bg-white border border-slate-100 rounded-2xl py-3.5 pl-12 pr-6 text-xs outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                                  value={item.modelName || ''}
+                                  onChange={(e) => {
+                                    const selectedDesc = e.target.value;
+                                    const matchedProduct = productMaster.find(p => p && (p.description === selectedDesc || p.name === selectedDesc));
+                                    const groupName = matchedProduct?.productGroupName || item.productGroupName || '';
+                                    updateItemRow(index, {
+                                      modelName: selectedDesc,
+                                      productGroupName: groupName,
+                                      rate: matchedProduct?.basePrice || 0,
+                                      size: 'XL'
+                                    });
+                                  }}
+                                >
+                                  <option value="">Select Product Description</option>
+                                  {productMaster.filter(p => p && (p.description || p.name)).map(p => {
+                                    const label = p.description || p.name;
+                                    return (
+                                      <option key={p.id || label} value={label}>{label}</option>
+                                    );
+                                  })}
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                  <ChevronRight className="w-4 h-4 rotate-90" />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Product Group Name */}
+                            <div className="space-y-2 md:col-span-4">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Product Group Name</label>
+                              <div className="relative">
+                                <input 
+                                  required
+                                  type="text"
+                                  className="w-full bg-white border border-slate-100 rounded-2xl py-3.5 px-6 text-xs outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+                                  placeholder="Enter or select Group"
+                                  value={item.productGroupName || ''}
+                                  onChange={(e) => updateItemRow(index, { productGroupName: e.target.value })}
+                                  list={`product-group-suggestions-${index}`}
+                                />
+                                <datalist id={`product-group-suggestions-${index}`}>
+                                  {Array.from(new Set(productMaster.map(p => p.productGroupName).filter(Boolean))).map(g => (
+                                    <option key={g} value={g} />
+                                  ))}
+                                </datalist>
+                              </div>
+                            </div>
+
+                            {/* Quantity */}
+                            <div className="space-y-2 md:col-span-3">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Quantity</label>
+                              <input 
+                                required
+                                type="number"
+                                min="1"
+                                className="w-full bg-white border border-slate-100 rounded-2xl py-3.5 px-6 text-xs outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+                                placeholder="Enter quantity"
+                                value={item.quantity || ''}
+                                onChange={(e) => updateItemRow(index, { quantity: parseFloat(e.target.value) || 0 })}
+                              />
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Product Group Name */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Group Name</label>
-                      <div className="relative">
-                        <input 
-                          required
-                          type="text"
-                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
-                          placeholder="Enter or select Product Group Name"
-                          value={formData.productGroupName || ''}
-                          onChange={(e) => setFormData({ ...formData, productGroupName: e.target.value })}
-                          list="product-group-suggestions"
-                        />
-                        <datalist id="product-group-suggestions">
-                          {Array.from(new Set(productMaster.map(p => p.productGroupName).filter(Boolean))).map(g => (
-                            <option key={g} value={g} />
-                          ))}
-                        </datalist>
-                      </div>
-                    </div>
-
-                    {/* Enter Quantity */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Quantity</label>
-                      <input 
-                        required
-                        type="number"
-                        min="1"
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-[#10b981]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
-                        placeholder="Enter quantity"
-                        value={formData.items?.[0]?.quantity || ''}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const updatedItems = [{ 
-                            modelName: formData.items?.[0]?.modelName || '', 
-                            quantity: val, 
-                            rate: formData.items?.[0]?.rate || 0, 
-                            size: 'XL',
-                            assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
-                            expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
-                          }];
-                          setFormData({
-                            ...formData,
-                            items: updatedItems
-                          });
-                        }}
-                      />
+                      ))}
                     </div>
                   </div>
                 </div>
               ) : formData.type === 'Damage' ? (
-                /* DAMAGE ENTRY FORM COMPONENTS (choose godown dropdown, select date, select product description, enter quantity) */
-                <div className="space-y-6">
+                /* DAMAGE ENTRY FORM COMPONENTS */
+                <div className="space-y-8 animate-in fade-in duration-200">
                   <div className="flex items-center gap-2 pb-2 border-b border-slate-50">
                     <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-600">
                       <AlertCircle className="w-4 h-4" />
@@ -960,7 +975,7 @@ export default function ProductionUnits({
                     <h4 className="text-xs font-bold text-rose-800 uppercase tracking-widest">Damage Details</h4>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Choose From Godown dropdown */}
                     <div className="space-y-2 col-span-1">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose From Godown</label>
@@ -968,7 +983,7 @@ export default function ProductionUnits({
                         <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
                         <select 
                           required
-                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-[#f43f5e]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none animate-in fade-in"
                           value={formData.unit || ''}
                           onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                         >
@@ -991,7 +1006,7 @@ export default function ProductionUnits({
                       <div className="relative">
                         <Factory className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
                         <select 
-                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-[#f43f5e]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
                           value={formData.toGodown || ''}
                           onChange={(e) => setFormData({ ...formData, toGodown: e.target.value })}
                         >
@@ -1008,87 +1023,125 @@ export default function ProductionUnits({
                       </div>
                     </div>
 
-                    {/* Select Date */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Select Date</label>
+                    {/* Choose Date */}
+                    <div className="space-y-2 col-span-1">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
                       <div className="relative">
                         <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10 pointer-events-none" />
                         <input 
                           required
                           type="date"
-                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer"
+                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#f43f5e]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer"
                           value={formData.assignedDate || ''}
                           onChange={(e) => setFormData({ ...formData, assignedDate: e.target.value, expectedDate: e.target.value })}
                         />
                       </div>
                     </div>
+                  </div>
 
-                    {/* Select Product Description */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Select Product Description</label>
-                      <div className="relative">
-                        <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-                        <select 
-                          required
-                          className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 pl-12 pr-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
-                          value={formData.items?.[0]?.modelName || ''}
-                          onChange={(e) => {
-                            const selectedDesc = e.target.value;
-                            const updatedItems = [{ 
-                              modelName: selectedDesc, 
-                              quantity: formData.items?.[0]?.quantity || 0, 
-                              rate: 0, 
-                              size: 'XL',
-                              assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
-                              expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
-                            }];
-                            setFormData({
-                              ...formData,
-                              modelName: selectedDesc,
-                              items: updatedItems
-                            });
-                          }}
+                  {/* Products Repeater */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-50">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-widest">Damaged Models</h4>
+                      {!editingId && (
+                        <button 
+                          type="button"
+                          onClick={addItemRow}
+                          className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl hover:bg-rose-100 transition-colors border border-rose-100 cursor-pointer"
                         >
-                          <option value="">Select Product Description</option>
-                          {productMaster.filter(p => p && (p.description || p.name)).map(p => {
-                            const label = p.description || p.name;
-                            return (
-                              <option key={p.id || label} value={label}>{label}</option>
-                            );
-                          })}
-                        </select>
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                          <ChevronRight className="w-4 h-4 rotate-90" />
-                        </div>
-                      </div>
+                          <Plus className="w-3 h-3" />
+                          Add Model
+                        </button>
+                      )}
                     </div>
 
-                    {/* Enter Quantity */}
-                    <div className="space-y-2 col-span-full">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Enter Quantity</label>
-                      <input 
-                        required
-                        type="number"
-                        min="1"
-                        className="w-full bg-[#f8faff] border border-slate-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50"
-                        placeholder="Enter quantity"
-                        value={formData.items?.[0]?.quantity || ''}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const updatedItems = [{ 
-                            modelName: formData.items?.[0]?.modelName || '', 
-                            quantity: val, 
-                            rate: 0, 
-                            size: 'XL',
-                            assignedDate: formData.assignedDate || new Date().toISOString().split('T')[0],
-                            expectedDate: formData.assignedDate || new Date().toISOString().split('T')[0]
-                          }];
-                          setFormData({
-                            ...formData,
-                            items: updatedItems
-                          });
-                        }}
-                      />
+                    <div className="space-y-6">
+                      {formData.items.map((item: any, index: number) => (
+                        <div key={index} className="bg-slate-50/50 p-6 rounded-[28px] border border-slate-100 space-y-4 relative group transition-all hover:border-rose-100 hover:shadow-sm">
+                          {formData.items.length > 1 && !editingId && (
+                            <button 
+                              type="button"
+                              onClick={() => removeItemRow(index)}
+                              className="absolute -top-3 -right-3 p-2 bg-white text-slate-400 hover:text-rose-500 rounded-full shadow-md border border-slate-100 transition-all active:scale-90 cursor-pointer"
+                              title="Delete Row"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                            {/* Product Description Select */}
+                            <div className="space-y-2 md:col-span-5">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Select Product Description</label>
+                              <div className="relative">
+                                <Monitor className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+                                <select 
+                                  required
+                                  className="w-full bg-white border border-slate-100 rounded-2xl py-3.5 pl-12 pr-6 text-xs outline-none focus:ring-2 focus:ring-[#f43f5e]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 cursor-pointer appearance-none"
+                                  value={item.modelName || ''}
+                                  onChange={(e) => {
+                                    const selectedDesc = e.target.value;
+                                    const matchedProduct = productMaster.find(p => p && (p.description === selectedDesc || p.name === selectedDesc));
+                                    const groupName = matchedProduct?.productGroupName || item.productGroupName || '';
+                                    updateItemRow(index, {
+                                      modelName: selectedDesc,
+                                      productGroupName: groupName,
+                                      rate: 0,
+                                      size: 'XL'
+                                    });
+                                  }}
+                                >
+                                  <option value="">Select Product Description</option>
+                                  {productMaster.filter(p => p && (p.description || p.name)).map(p => {
+                                    const label = p.description || p.name;
+                                    return (
+                                      <option key={p.id || label} value={label}>{label}</option>
+                                    );
+                                  })}
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                  <ChevronRight className="w-4 h-4 rotate-90" />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Product Group Name */}
+                            <div className="space-y-2 md:col-span-4">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Product Group Name</label>
+                              <div className="relative">
+                                <input 
+                                  required
+                                  type="text"
+                                  className="w-full bg-white border border-slate-100 rounded-2xl py-3.5 px-6 text-xs outline-none focus:ring-2 focus:ring-[#f43f5e]/10 font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+                                  placeholder="Enter or select Group"
+                                  value={item.productGroupName || ''}
+                                  onChange={(e) => updateItemRow(index, { productGroupName: e.target.value })}
+                                  list={`damage-product-group-suggestions-${index}`}
+                                />
+                                <datalist id={`damage-product-group-suggestions-${index}`}>
+                                  {Array.from(new Set(productMaster.map(p => p.productGroupName).filter(Boolean))).map(g => (
+                                    <option key={g} value={g} />
+                                  ))}
+                                </datalist>
+                              </div>
+                            </div>
+
+                            {/* Enter Quantity */}
+                            <div className="space-y-2 md:col-span-3">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Enter Quantity</label>
+                              <input 
+                                required
+                                type="number"
+                                min="1"
+                                className="w-full bg-white border border-slate-100 rounded-2xl py-3.5 px-6 text-xs outline-none focus:ring-2 focus:ring-[#f43f5e]/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+                                placeholder="Enter quantity"
+                                value={item.quantity || ''}
+                                onChange={(e) => updateItemRow(index, { quantity: parseFloat(e.target.value) || 0 })}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

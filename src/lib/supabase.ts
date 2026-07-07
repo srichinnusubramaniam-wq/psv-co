@@ -101,6 +101,15 @@ export async function verifySupabaseSetup() {
   }
 }
 
+// Bypass reference to original storage setter to avoid triggering pushToSupabase
+let bypassSetItem: ((key: string, value: string) => void) | null = null;
+
+// Queue structure to manage sequential upsert requests per table, preventing race conditions or out-of-order execution
+export const pushQueues: Record<string, {
+  pendingValue: string | null;
+  activePush: Promise<void> | null;
+}> = {};
+
 // Pull all keys from Supabase and write to localStorage
 export async function pullFromSupabase() {
   updateSyncStatus({ syncing: true });
@@ -108,7 +117,6 @@ export async function pullFromSupabase() {
   let errorMessages: string[] = [];
 
   try {
-    isSyncingActive = false;
     for (const key of SYNC_KEYS) {
       try {
         const { data, error } = await supabase
@@ -130,7 +138,11 @@ export async function pullFromSupabase() {
             if (value !== undefined && value !== null && value !== 'undefined') {
               const strVal = typeof value === 'string' ? value : JSON.stringify(value);
               if (strVal && strVal !== 'undefined' && strVal !== 'null') {
-                localStorage.setItem(key, strVal);
+                if (bypassSetItem) {
+                  bypassSetItem(key, strVal);
+                } else {
+                  localStorage.setItem(key, strVal);
+                }
                 successCount++;
               }
             }
@@ -140,7 +152,6 @@ export async function pullFromSupabase() {
         console.warn(`Exception while pulling ${key}:`, e);
       }
     }
-    isSyncingActive = true;
 
     // Dispatch event to refresh the React UI
     window.dispatchEvent(new Event('inven_localstorage_sync'));
@@ -154,7 +165,6 @@ export async function pullFromSupabase() {
     });
     return true;
   } catch (err: any) {
-    isSyncingActive = true;
     console.error('Error pulling from Supabase:', err);
     updateSyncStatus({
       error: err.message || 'Pull failed',
@@ -165,8 +175,6 @@ export async function pullFromSupabase() {
 }
 
 // Push a single key-value to Supabase
-let isSyncingActive = true;
-
 export async function pushAllToSupabase() {
   updateSyncStatus({ syncing: true });
   let successCount = 0;
@@ -242,66 +250,95 @@ export async function pushAllToSupabase() {
 }
 
 export async function pushToSupabase(key: string, valueStr: string) {
-  if (!isSyncingActive) return;
   if (!key.startsWith('inven_')) return;
   if (!SYNC_KEYS.includes(key)) return;
   if (!valueStr || valueStr === 'undefined' || valueStr === 'null') return;
 
-  try {
-    let parsedValue;
+  // Initialize queue for this key if not exists
+  if (!pushQueues[key]) {
+    pushQueues[key] = { pendingValue: null, activePush: null };
+  }
+
+  const queue = pushQueues[key];
+
+  // If there is an active push already, stash the latest value and let that sequence process it
+  if (queue.activePush) {
+    queue.pendingValue = valueStr;
+    return;
+  }
+
+  // Actual push action helper
+  const performPush = async (val: string) => {
     try {
-      parsedValue = JSON.parse(valueStr);
-    } catch {
-      parsedValue = valueStr;
-    }
+      let parsedValue;
+      try {
+        parsedValue = JSON.parse(val);
+      } catch {
+        parsedValue = val;
+      }
 
-    // Try upserting using 'id' as primary key first, and fallback if table uses 'key' as column name.
-    const { error } = await supabase
-      .from(key)
-      .upsert({
-        id: key,
-        value: parsedValue,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'id' });
+      // Try upserting using 'id' as primary key first, and fallback if table uses 'key' as column name.
+      const { error } = await supabase
+        .from(key)
+        .upsert({
+          id: key,
+          value: parsedValue,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
 
-    if (error) {
-      // Check if it's a column-not-found error, which means we should try the fallback 'key' column
-      const isMissingColumn = error.message?.includes('column "id"') || error.message?.includes('column "id" does not exist') || error.code === '42703';
+      if (error) {
+        // Check if it's a column-not-found error, which means we should try the fallback 'key' column
+        const isMissingColumn = error.message?.includes('column "id"') || error.message?.includes('column "id" does not exist') || error.code === '42703';
 
-      if (isMissingColumn) {
-        console.warn(`Upsert using 'id' failed for table ${key} due to missing column. Attempting fallback with 'key' column...`);
-        // Fallback for tables that might use 'key' as column name instead of 'id'
-        const { error: retryError } = await supabase
-          .from(key)
-          .upsert({
-            key,
-            value: parsedValue,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'key' });
+        if (isMissingColumn) {
+          console.warn(`Upsert using 'id' failed for table ${key} due to missing column. Attempting fallback with 'key' column...`);
+          // Fallback for tables that might use 'key' as column name instead of 'id'
+          const { error: retryError } = await supabase
+            .from(key)
+            .upsert({
+              key,
+              value: parsedValue,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
 
-        if (retryError) {
-          console.error(`Fallback upsert also failed for table ${key}:`, retryError.message);
+          if (retryError) {
+            console.error(`Fallback upsert also failed for table ${key}:`, retryError.message);
+            updateSyncStatus({
+              error: `Upsert failed for table '${key}': ${retryError.message}`
+            });
+          }
+        } else {
+          console.error(`Upsert failed for table ${key}:`, error.message);
           updateSyncStatus({
-            error: `Upsert failed for table '${key}': ${retryError.message}`
+            error: `Upsert failed for table '${key}': ${error.message}`
           });
         }
       } else {
-        console.error(`Upsert failed for table ${key}:`, error.message);
         updateSyncStatus({
-          error: `Upsert failed for table '${key}': ${error.message}`
+          connected: true,
+          tableExists: true,
+          lastSyncedAt: new Date(),
+          error: null
         });
       }
-    } else {
-      updateSyncStatus({
-        connected: true,
-        tableExists: true,
-        lastSyncedAt: new Date(),
-        error: null
-      });
+    } catch (err: any) {
+      console.error('Error pushing key to Supabase:', key, err);
     }
-  } catch (err: any) {
-    console.error('Error pushing key to Supabase:', key, err);
-  }
+  };
+
+  // Start sequential push chain
+  queue.activePush = (async () => {
+    await performPush(valueStr);
+
+    // Drain any pending stashed values that accumulated during the network request
+    while (queue.pendingValue !== null) {
+      const nextVal = queue.pendingValue;
+      queue.pendingValue = null;
+      await performPush(nextVal);
+    }
+
+    queue.activePush = null;
+  })();
 }
 
 // Global hook/interception of localStorage
@@ -309,8 +346,9 @@ export function initializeSupabaseSync() {
   if (typeof window === 'undefined') return;
 
   // Save reference to original storage methods
-  const originalSetItem = localStorage.setItem;
-  const originalRemoveItem = localStorage.removeItem;
+  const originalSetItem = localStorage.setItem.bind(localStorage);
+  const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+  bypassSetItem = originalSetItem;
 
   // Clean up any corrupt "undefined" or "null" values from localStorage on startup
   SYNC_KEYS.forEach(key => {
@@ -326,7 +364,7 @@ export function initializeSupabaseSync() {
 
   // 1. Intercept localStorage.setItem
   localStorage.setItem = function (key: string, value: string) {
-    originalSetItem.apply(this, [key, value]);
+    originalSetItem(key, value);
     if (key.startsWith('inven_') && SYNC_KEYS.includes(key)) {
       if (value && value !== 'undefined' && value !== 'null') {
         pushToSupabase(key, value);
@@ -336,7 +374,7 @@ export function initializeSupabaseSync() {
 
   // 2. Intercept localStorage.removeItem
   localStorage.removeItem = function (key: string) {
-    originalRemoveItem.apply(this, [key]);
+    originalRemoveItem(key);
     if (key.startsWith('inven_') && SYNC_KEYS.includes(key)) {
       supabase.from(key).delete().or(`id.eq.${key},key.eq.${key}`)
         .then(({ error }) => {
@@ -358,14 +396,21 @@ export function initializeSupabaseSync() {
             if (row) {
               const rowId = row.id || row.key;
               if (rowId && rowId === tableName) {
+                // If we currently have an active or pending push for this table, ignore real-time changes
+                // to avoid self-echoes or race condition overwrites of user actions.
+                if (pushQueues[tableName]?.activePush) {
+                  return;
+                }
                 const localVal = localStorage.getItem(tableName);
                 if (row.value !== undefined && row.value !== null && row.value !== 'undefined') {
                   const remoteValStr = typeof row.value === 'string' ? row.value : JSON.stringify(row.value);
                   if (remoteValStr && remoteValStr !== 'undefined' && remoteValStr !== 'null') {
                     if (localVal !== remoteValStr) {
-                      isSyncingActive = false;
-                      localStorage.setItem(tableName, remoteValStr);
-                      isSyncingActive = true;
+                      if (bypassSetItem) {
+                        bypassSetItem(tableName, remoteValStr);
+                      } else {
+                        localStorage.setItem(tableName, remoteValStr);
+                      }
                       // Dispatch event to refresh the React UI
                       window.dispatchEvent(new Event('inven_localstorage_sync'));
                     }
