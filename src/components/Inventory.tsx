@@ -20,7 +20,8 @@ import {
   CheckCircle2,
   ChevronRight,
   Download,
-  Printer
+  Printer,
+  RotateCcw
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -57,9 +58,17 @@ export interface InventoryItem {
   cgst?: number;
   sgst?: number;
   igst?: number;
+  cgstPercent?: number;
+  sgstPercent?: number;
+  igstPercent?: number;
   netAmount?: number;
   productGroupName?: string;
   gstType?: 'GST' | 'NON-GST';
+  isReturned?: boolean;
+  returnedQuantity?: number;
+  returnDate?: string;
+  returnReason?: string;
+  returnRefundAmount?: number;
 }
 
 function addDays(dateStr: string, days: number | string | undefined): string {
@@ -151,7 +160,10 @@ export default function Inventory() {
     creditDays: 0,
     dueDate: '',
     rawMaterialType: 'cloth',
-    gstType: 'GST'
+    gstType: 'GST',
+    cgstPercent: undefined,
+    sgstPercent: undefined,
+    igstPercent: undefined
   });
 
   const getGSTPercentInline = (supplierId?: string) => {
@@ -168,7 +180,18 @@ export default function Inventory() {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'all' | 'pending_payments' | 'paid'>('all');
+  const getActiveGSTPercents = (targetFormData: Partial<InventoryItem>) => {
+    const defaults = getGSTPercentInline(targetFormData.supplierId);
+    return {
+      cgstPercent: targetFormData.cgstPercent !== undefined ? targetFormData.cgstPercent : defaults.cgstPercent,
+      sgstPercent: targetFormData.sgstPercent !== undefined ? targetFormData.sgstPercent : defaults.sgstPercent,
+      igstPercent: targetFormData.igstPercent !== undefined ? targetFormData.igstPercent : defaults.igstPercent,
+      isInterstate: defaults.isInterstate,
+      locationType: defaults.locationType
+    };
+  };
+
+  const [activeTab, setActiveTab] = useState<'all' | 'pending_payments' | 'paid' | 'purchase_return'>('all');
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentItem, setPaymentItem] = useState<InventoryItem | null>(null);
   const [paymentDetails, setPaymentDetails] = useState({
@@ -178,6 +201,92 @@ export default function Inventory() {
     amountToPay: 0,
     isFullPayment: true
   });
+
+  const [isReturnDialogOpen, setIsReturnDialogOpen] = useState(false);
+  const [returnItem, setReturnItem] = useState<InventoryItem | null>(null);
+  const [returnDetails, setReturnDetails] = useState({
+    returnedQuantity: 0,
+    returnDate: new Date().toISOString().split('T')[0],
+    returnReason: 'Quality Issue',
+    returnRefundAmount: 0,
+    isFullReturn: true
+  });
+
+  const openReturnDialog = (item: InventoryItem) => {
+    setReturnItem(item);
+    const availableQty = item.quantity;
+    const price = item.pricePerMeter || 0;
+    const totalItemCost = item.totalCost || (price * item.quantity);
+    
+    setReturnDetails({
+      returnedQuantity: availableQty,
+      returnDate: new Date().toISOString().split('T')[0],
+      returnReason: 'Quality Issue',
+      returnRefundAmount: totalItemCost,
+      isFullReturn: true
+    });
+    setIsReturnDialogOpen(true);
+  };
+
+  const handleReturnSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!returnItem) return;
+
+    const qtyToReturn = parseFloat(String(returnDetails.returnedQuantity)) || 0;
+    if (qtyToReturn <= 0 || qtyToReturn > returnItem.quantity) {
+      return;
+    }
+
+    const price = returnItem.pricePerMeter || 0;
+    
+    const updated = items.map(item => {
+      if (item.id === returnItem.id) {
+        const newQty = parseFloat(Math.max(0, item.quantity - qtyToReturn).toFixed(3));
+        const updatedTotalCost = parseFloat((newQty * price).toFixed(2));
+        
+        return {
+          ...item,
+          quantity: newQty,
+          totalCost: updatedTotalCost,
+          isReturned: true,
+          returnedQuantity: parseFloat(((item.returnedQuantity || 0) + qtyToReturn).toFixed(3)),
+          returnDate: returnDetails.returnDate,
+          returnReason: returnDetails.returnReason,
+          returnRefundAmount: parseFloat(((item.returnRefundAmount || 0) + (parseFloat(String(returnDetails.returnRefundAmount)) || 0)).toFixed(2))
+        };
+      }
+      return item;
+    });
+
+    saveToLocal(updated);
+    setIsReturnDialogOpen(false);
+    setReturnItem(null);
+  };
+  
+  const handleUndoReturn = (itemToUndo: InventoryItem) => {
+    const returnedQty = itemToUndo.returnedQuantity || 0;
+    const price = itemToUndo.pricePerMeter || 0;
+    
+    const updated = items.map(item => {
+      if (item.id === itemToUndo.id) {
+        const restoredQty = parseFloat((item.quantity + returnedQty).toFixed(3));
+        const restoredTotalCost = parseFloat((restoredQty * price).toFixed(2));
+        return {
+          ...item,
+          quantity: restoredQty,
+          totalCost: restoredTotalCost,
+          isReturned: false,
+          returnedQuantity: 0,
+          returnDate: undefined,
+          returnReason: undefined,
+          returnRefundAmount: 0
+        };
+      }
+      return item;
+    });
+    
+    saveToLocal(updated);
+  };
 
   useEffect(() => {
     // Load Items
@@ -464,7 +573,10 @@ export default function Inventory() {
       dueDate: '',
       totalCost: undefined,
       rawMaterialType: 'cloth',
-      gstType: 'GST'
+      gstType: 'GST',
+      cgstPercent: undefined,
+      sgstPercent: undefined,
+      igstPercent: undefined
     });
   };
 
@@ -492,7 +604,17 @@ export default function Inventory() {
       const paid = Number(item.paidAmount) || 0;
       const isPending = paid < grossAmount;
       
-      const passTab = activeTab === 'pending_payments' ? isPending : (activeTab === 'paid' ? !isPending : true);
+      let passTab = true;
+      if (activeTab === 'pending_payments') {
+        passTab = isPending && !item.isReturned;
+      } else if (activeTab === 'paid') {
+        passTab = !isPending && !item.isReturned;
+      } else if (activeTab === 'purchase_return') {
+        passTab = !!item.isReturned;
+      } else {
+        // 'all' tab shows all active purchases (non-returned or partially returned, but hide if fully returned)
+        passTab = !item.isReturned || (item.quantity > 0);
+      }
       const passLowStock = showLowStockOnly ? (item.quantity <= threshold) : true;
       return passTab && passLowStock;
     });
@@ -546,7 +668,7 @@ export default function Inventory() {
         
         <div className="flex flex-wrap items-center gap-4">
           {/* Tab Switcher for payment statuses */}
-          <div className="flex bg-slate-100 p-1 rounded-2xl">
+          <div className="flex bg-slate-100 p-1 rounded-2xl flex-wrap gap-1 sm:gap-0">
             <button 
               type="button"
               onClick={() => setActiveTab('all')}
@@ -572,7 +694,7 @@ export default function Inventory() {
               Pending Payments
               {items.filter(item => {
                 const gross = (item.pricePerMeter || 0) * (item.quantity || 0);
-                return (item.paidAmount || 0) < gross;
+                return !item.isReturned && (item.paidAmount || 0) < gross;
               }).length > 0 && (
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
               )}
@@ -588,6 +710,23 @@ export default function Inventory() {
               )}
             >
               Paid Lots
+            </button>
+            <button 
+              type="button"
+              onClick={() => setActiveTab('purchase_return')}
+              className={cn(
+                "px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                activeTab === 'purchase_return' 
+                  ? "bg-white text-indigo-600 shadow-sm" 
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Purchase Return
+              {items.filter(item => item.isReturned).length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold bg-rose-100 text-rose-600 animate-in zoom-in-50">
+                  {items.filter(item => item.isReturned).length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -662,37 +801,34 @@ export default function Inventory() {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
-                <th className="px-6 py-4">Item Details</th>
-                <th className="px-6 py-4">Payment Mode</th>
-                <th className="px-6 py-4">Due Date</th>
-                <th className="px-6 py-4">Net Amount</th>
-                <th className="px-6 py-4">Payment Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
+              {activeTab === 'purchase_return' ? (
+                <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
+                  <th className="px-6 py-4">Returned Item &amp; Lot</th>
+                  <th className="px-6 py-4">Return Date</th>
+                  <th className="px-6 py-4">Returned Qty &amp; Unit</th>
+                  <th className="px-6 py-4">Refund / Credit (₹)</th>
+                  <th className="px-6 py-4">Return Reason</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              ) : (
+                <tr className="bg-slate-50/50 text-[10px] uppercase tracking-widest text-slate-400 font-bold">
+                  <th className="px-6 py-4">Item Details</th>
+                  <th className="px-6 py-4">Payment Mode</th>
+                  <th className="px-6 py-4">Due Date</th>
+                  <th className="px-6 py-4">Net Amount</th>
+                  <th className="px-6 py-4">Payment Status</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
+                </tr>
+              )}
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {displayedItems.map((item) => {
-                const netAmount = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
-                const paidAmt = Number(item.paidAmount) || 0;
-                const pendingAmt = Math.max(0, netAmount - paidAmt);
-                
-                return (
-                  <tr 
-                    key={item.id} 
-                    className={cn(
-                      "group hover:bg-slate-50/30 transition-colors",
-                      item.quantity <= threshold ? "bg-rose-50/40" : ""
-                    )}
-                  >
+              {activeTab === 'purchase_return' ? (
+                displayedItems.map((item) => (
+                  <tr key={item.id} className="group hover:bg-slate-50/30 transition-colors animate-in fade-in">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center",
-                          item.quantity <= threshold ? "bg-rose-100 text-rose-600" :
-                          item.paymentType === 'Credit' ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
-                        )}>
-                          <Layers className="w-5 h-5" />
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600">
+                          <RotateCcw className="w-5 h-5" />
                         </div>
                         <div>
                           <button
@@ -707,124 +843,246 @@ export default function Inventory() {
                             {item.fabricType && item.fabricType.toLowerCase() !== (item.rawMaterialType || 'cloth').toLowerCase() && (
                               <span className="text-slate-500 font-semibold text-[11px]">({item.fabricType})</span>
                             )}
-                            {item.productGroupName && (
-                              <span className="text-slate-400 font-normal text-[10px]">({item.productGroupName})</span>
-                            )}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-medium">{item.entryDate}</p>
-                          <p className="text-[10px] text-slate-400 font-medium">From: <span className="font-bold text-slate-700">{item.supplierName}</span></p>
+                          <p className="text-[10px] text-slate-400 font-medium">Supplier: <span className="font-bold text-slate-700">{item.supplierName}</span></p>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-5">
-                      <div className="flex flex-col gap-1">
-                        <span className={cn(
-                          "text-xs font-bold px-2 py-0.5 rounded-lg w-fit border uppercase tracking-wider",
-                          item.paymentType === 'Credit' 
-                             ? "bg-amber-50 text-amber-700 border-amber-100" 
-                            : "bg-emerald-50 text-emerald-700 border-emerald-100"
-                        )}>
-                          {item.paymentType || 'Cash'}
-                        </span>
-                      </div>
+                      <span className="text-sm font-semibold text-slate-600">{item.returnDate || item.entryDate}</span>
                     </td>
                     <td className="px-6 py-5">
-                      {item.dueDate && (item.paymentType === 'Credit' || (item.creditDays !== undefined && item.creditDays > 0) || pendingAmt > 0) ? (
-                        <div className="flex flex-col gap-0.5">
-                          <span className={cn(
-                            "text-sm font-bold",
-                            pendingAmt > 0 ? "text-rose-600 animate-pulse" : "text-slate-600"
-                          )}>
-                            {item.dueDate}
-                          </span>
-                          {item.creditDays !== undefined && item.creditDays > 0 && (
-                            <span className="text-[10px] text-slate-400 font-semibold">({item.creditDays} days)</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 font-medium">-</span>
+                      <span className="text-sm font-bold text-rose-600">
+                        {item.returnedQuantity || 0} {item.unit || 'Meters'}
+                      </span>
+                      {item.quantity > 0 && (
+                        <p className="text-[10px] text-slate-400 font-medium">Active stock: {item.quantity} {item.unit}</p>
                       )}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="text-sm font-bold text-indigo-600">₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                      {Number(item.quantity) > 0 && (
-                        <p className="text-[10px] text-slate-500 font-semibold">
-                          {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
-                        </p>
-                      )}
+                      <span className="text-sm font-bold text-slate-800">
+                        ₹{(item.returnRefundAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
                     </td>
                     <td className="px-6 py-5">
-                      <div className="flex flex-col gap-1 w-fit">
-                        <span className={cn(
-                          "text-[9px] font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider text-center",
-                          item.paymentStatus === 'Paid' 
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
-                            : item.paymentStatus === 'Partially Paid'
-                            ? "bg-blue-50 text-blue-700 border-blue-100"
-                            : "bg-amber-50 text-amber-700 border-amber-100"
-                        )}>
-                          {item.paymentStatus || 'Unpaid'}
-                        </span>
-                        <div className="text-[10px] font-medium text-slate-400 divide-x divide-slate-200 flex gap-1.5 items-center">
-                          <span>Paid: <span className="font-semibold text-slate-600">₹{paidAmt.toLocaleString()}</span></span>
-                          <span className="pl-1.5">Pending: <span className={cn("font-bold", pendingAmt > 0 ? "text-rose-600" : "text-slate-500")}>₹{pendingAmt.toLocaleString()}</span></span>
-                        </div>
-                      </div>
+                      <span className="text-xs font-bold px-2.5 py-1 rounded-xl bg-rose-50 text-rose-700 border border-rose-100 uppercase tracking-wide">
+                        {item.returnReason || 'Quality Issue'}
+                      </span>
                     </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex justify-end gap-1.5">
                         <button 
-                          onClick={() => openPaymentDialog(item)}
-                          className={cn(
-                            "p-2 rounded-lg transition-all",
-                            item.paymentStatus === 'Paid' 
-                              ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100" 
-                              : item.paymentStatus === 'Partially Paid'
-                              ? "text-blue-600 bg-blue-50 hover:bg-blue-100 animate-pulse"
-                              : "text-amber-600 bg-amber-50 hover:bg-amber-100"
-                          )}
-                          title="Record Supplier Payment"
-                        >
-                          <Coins className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => { 
-                            setEditingId(item.id); 
-                            const isYarnItem = item.rawMaterialType === 'yarn' || item.fabricType === 'Yarn';
-                            const isJariItem = item.rawMaterialType === 'jari' || item.fabricType === 'Jari';
-                            const totalVal = item.totalCost !== undefined ? item.totalCost : (item.pricePerMeter || 0) * (item.quantity || 0);
-                            setFormData({
-                              ...item,
-                              rawMaterialType: isYarnItem ? 'yarn' : (isJariItem ? 'jari' : 'cloth'),
-                              amount: item.amount || totalVal - (item.cgst || 0) - (item.sgst || 0) - (item.igst || 0),
-                              cgst: item.cgst || 0,
-                              sgst: item.sgst || 0,
-                              igst: item.igst || 0,
-                              totalCost: totalVal,
-                              gstType: item.gstType || ((item.cgst || item.sgst || item.igst) ? 'GST' : 'NON-GST')
-                            }); 
-                            setIsFormOpen(true); 
-                          }}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => deleteItem(item.id)}
+                          onClick={() => handleUndoReturn(item)}
                           className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                          title="Undo Return & Restore Stock"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
                   </tr>
-                );
-              })}
+                ))
+              ) : (
+                displayedItems.map((item) => {
+                  const netAmount = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
+                  const paidAmt = Number(item.paidAmount) || 0;
+                  const pendingAmt = Math.max(0, netAmount - paidAmt);
+                  
+                  return (
+                    <tr 
+                      key={item.id} 
+                      className={cn(
+                        "group hover:bg-slate-50/30 transition-colors",
+                        item.quantity <= threshold ? "bg-rose-50/40" : ""
+                      )}
+                    >
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center",
+                            item.quantity <= threshold ? "bg-rose-100 text-rose-600" :
+                            item.paymentType === 'Credit' ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600"
+                          )}>
+                            <Layers className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <button
+                              onClick={() => handlePurIdClick(item)}
+                              className="text-sm font-bold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none text-left transition-colors cursor-pointer block"
+                              title="Click to view supplier details"
+                            >
+                              {item.id}
+                            </button>
+                            <p className="text-xs font-bold text-indigo-600 flex items-center gap-1.5 flex-wrap">
+                              <span className="capitalize">{item.rawMaterialType || 'cloth'}</span>
+                              {item.fabricType && item.fabricType.toLowerCase() !== (item.rawMaterialType || 'cloth').toLowerCase() && (
+                                <span className="text-slate-500 font-semibold text-[11px]">({item.fabricType})</span>
+                              )}
+                              {item.productGroupName && (
+                                <span className="text-slate-400 font-normal text-[10px]">({item.productGroupName})</span>
+                              )}
+                              {item.isReturned && (
+                                <span className="text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-1.5 py-0.5 rounded font-extrabold uppercase">Returned Qty: {item.returnedQuantity}</span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-medium">{item.entryDate}</p>
+                            <p className="text-[10px] text-slate-400 font-medium">From: <span className="font-bold text-slate-700">{item.supplierName}</span></p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex flex-col gap-1">
+                          <span className={cn(
+                            "text-xs font-bold px-2 py-0.5 rounded-lg w-fit border uppercase tracking-wider",
+                            item.paymentType === 'Credit' 
+                               ? "bg-amber-50 text-amber-700 border-amber-100" 
+                              : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                          )}>
+                            {item.paymentType || 'Cash'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        {item.dueDate && (item.paymentType === 'Credit' || (item.creditDays !== undefined && item.creditDays > 0) || pendingAmt > 0) ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className={cn(
+                              "text-sm font-bold",
+                              pendingAmt > 0 ? "text-rose-600 animate-pulse" : "text-slate-600"
+                            )}>
+                              {item.dueDate}
+                            </span>
+                            {item.creditDays !== undefined && item.creditDays > 0 && (
+                              <span className="text-[10px] text-slate-400 font-semibold">({item.creditDays} days)</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 font-medium">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-5">
+                        <p className="text-sm font-bold text-indigo-600">₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                        {Number(item.quantity) > 0 && (
+                          <p className="text-[10px] text-slate-500 font-semibold">
+                            {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex flex-col gap-1 w-fit">
+                          <span className={cn(
+                            "text-[9px] font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider text-center",
+                            item.paymentStatus === 'Paid' 
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                              : item.paymentStatus === 'Partially Paid'
+                              ? "bg-blue-50 text-blue-700 border-blue-100"
+                              : "bg-amber-50 text-amber-700 border-amber-100"
+                          )}>
+                            {item.paymentStatus || 'Unpaid'}
+                          </span>
+                          <div className="text-[10px] font-medium text-slate-400 divide-x divide-slate-200 flex gap-1.5 items-center">
+                            <span>Paid: <span className="font-semibold text-slate-600">₹{paidAmt.toLocaleString()}</span></span>
+                            <span className="pl-1.5">Pending: <span className={cn("font-bold", pendingAmt > 0 ? "text-rose-600" : "text-slate-500")}>₹{pendingAmt.toLocaleString()}</span></span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          {item.quantity > 0 && (
+                            <button 
+                              onClick={() => openReturnDialog(item)}
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                              title="Return Materials to Supplier"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => openPaymentDialog(item)}
+                            className={cn(
+                              "p-2 rounded-lg transition-all",
+                              item.paymentStatus === 'Paid' 
+                                ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100" 
+                                : item.paymentStatus === 'Partially Paid'
+                                ? "text-blue-600 bg-blue-50 hover:bg-blue-100 animate-pulse"
+                                : "text-amber-600 bg-amber-50 hover:bg-amber-100"
+                            )}
+                            title="Record Supplier Payment"
+                          >
+                            <Coins className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => { 
+                              setEditingId(item.id); 
+                              const isYarnItem = item.rawMaterialType === 'yarn' || item.fabricType === 'Yarn';
+                              const isJariItem = item.rawMaterialType === 'jari' || item.fabricType === 'Jari';
+                              const totalVal = item.totalCost !== undefined ? item.totalCost : (item.pricePerMeter || 0) * (item.quantity || 0);
+                              setFormData({
+                                ...item,
+                                rawMaterialType: isYarnItem ? 'yarn' : (isJariItem ? 'jari' : 'cloth'),
+                                amount: item.amount || totalVal - (item.cgst || 0) - (item.sgst || 0) - (item.igst || 0),
+                                cgst: item.cgst || 0,
+                                sgst: item.sgst || 0,
+                                igst: item.igst || 0,
+                                totalCost: totalVal,
+                                gstType: item.gstType || ((item.cgst || item.sgst || item.igst) ? 'GST' : 'NON-GST'),
+                                cgstPercent: item.cgstPercent !== undefined ? item.cgstPercent : undefined,
+                                sgstPercent: item.sgstPercent !== undefined ? item.sgstPercent : undefined,
+                                igstPercent: item.igstPercent !== undefined ? item.igstPercent : undefined
+                              }); 
+                              setIsFormOpen(true); 
+                            }}
+                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => deleteItem(item.id)}
+                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
               {displayedItems.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-20 text-center text-slate-400">
                     <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                    <p>No inventory items found.</p>
+                    <p className="font-bold text-slate-600 text-base mb-2">
+                      {activeTab === 'purchase_return' ? 'No Purchase Returns logged yet' : 'No inventory items found.'}
+                    </p>
+                    {activeTab === 'purchase_return' ? (
+                      <>
+                        <p className="text-xs text-slate-400 max-w-sm mx-auto mb-6">To log a return, click the Return icon on any active purchase lot in the "All Lots" tab, or choose from the available lots below.</p>
+                        {items.filter(item => item.quantity > 0).length > 0 && (
+                          <div className="max-w-xs mx-auto">
+                            <select
+                              className="w-full bg-[#f8faff] border border-slate-200 rounded-2xl py-3 px-4 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer shadow-sm text-center"
+                              defaultValue=""
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val) {
+                                  const found = items.find(i => i.id === val);
+                                  if (found) openReturnDialog(found);
+                                }
+                              }}
+                            >
+                              <option value="" disabled>-- Select a Lot to Return --</option>
+                              {items.filter(item => item.quantity > 0).map(item => (
+                                <option key={item.id} value={item.id}>
+                                  {item.id} - {item.supplierName} ({item.quantity} {item.unit})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-slate-400">Try adjusting your filters or search terms.</p>
+                    )}
                   </td>
                 </tr>
               )}
@@ -888,7 +1146,10 @@ export default function Inventory() {
                         supplierId: suppId,
                         cgst: nextCgst,
                         sgst: nextSgst,
-                        igst: nextIgst
+                        igst: nextIgst,
+                        cgstPercent,
+                        sgstPercent,
+                        igstPercent
                       });
                     }}
                   >
@@ -963,7 +1224,7 @@ export default function Inventory() {
                         value="yarn"
                         checked={formData.rawMaterialType === 'yarn'}
                         onChange={() => {
-                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getActiveGSTPercents(formData);
                           const amt = formData.amount || 0;
                           let calculatedCGST = 0;
                           let calculatedSGST = 0;
@@ -979,7 +1240,10 @@ export default function Inventory() {
                             rawMaterialType: 'yarn',
                             cgst: calculatedCGST,
                             sgst: calculatedSGST,
-                            igst: calculatedIGST
+                            igst: calculatedIGST,
+                            cgstPercent,
+                            sgstPercent,
+                            igstPercent
                           });
                         }}
                         className="sr-only"
@@ -1010,7 +1274,7 @@ export default function Inventory() {
                         value="jari"
                         checked={formData.rawMaterialType === 'jari'}
                         onChange={() => {
-                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getActiveGSTPercents(formData);
                           const amt = formData.amount || 0;
                           let calculatedCGST = 0;
                           let calculatedSGST = 0;
@@ -1030,7 +1294,10 @@ export default function Inventory() {
                             productGroupName: needDefault ? '' : formData.productGroupName,
                             cgst: calculatedCGST,
                             sgst: calculatedSGST,
-                            igst: calculatedIGST
+                            igst: calculatedIGST,
+                            cgstPercent,
+                            sgstPercent,
+                            igstPercent
                           });
                         }}
                         className="sr-only"
@@ -1181,7 +1448,7 @@ export default function Inventory() {
                             checked={(formData.gstType || 'GST') === 'GST'}
                             onChange={() => {
                               const amt = formData.amount || 0;
-                              const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
+                              const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getActiveGSTPercents(formData);
                               let calculatedCGST = 0;
                               let calculatedSGST = 0;
                               let calculatedIGST = 0;
@@ -1271,7 +1538,7 @@ export default function Inventory() {
                         onChange={(e) => {
                           const amt = parseFloat(e.target.value) || 0;
                           const isGST = (formData.gstType || 'GST') === 'GST';
-                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getGSTPercentInline(formData.supplierId) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getActiveGSTPercents(formData) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
                           let calculatedCGST = 0;
                           let calculatedSGST = 0;
                           let calculatedIGST = 0;
@@ -1301,85 +1568,168 @@ export default function Inventory() {
 
                     {(formData.gstType || 'GST') === 'GST' && (
                       <>
-                        {getGSTPercentInline(formData.supplierId).isInterstate ? (
+                        {getActiveGSTPercents(formData).isInterstate ? (
                           <div className="space-y-2 animate-in fade-in duration-200">
                             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
-                              IGST ({getGSTPercentInline(formData.supplierId).igstPercent}%) (₹)
+                              IGST Rate (%) &amp; Amount (₹)
                             </label>
-                            <input 
-                              type="number" 
-                              placeholder="0.00"
-                              className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                              value={formData.igst !== undefined ? formData.igst : ''}
-                              onChange={(e) => {
-                                const ig = parseFloat(e.target.value) || 0;
-                                const subAmt = formData.amount || 0;
-                                const calculatedTotalCost = parseFloat((subAmt + ig).toFixed(2));
-                                const qty = formData.quantity || 0;
-                                setFormData({
-                                  ...formData,
-                                  igst: ig,
-                                  cgst: 0,
-                                  sgst: 0,
-                                  totalCost: calculatedTotalCost,
-                                  pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                });
-                              }}
-                              onWheel={(e) => e.currentTarget.blur()}
-                            />
+                            <div className="flex gap-2">
+                              <div className="w-1/3">
+                                <input 
+                                  type="number"
+                                  step="0.1"
+                                  placeholder="%"
+                                  className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
+                                  value={getActiveGSTPercents(formData).igstPercent}
+                                  onChange={(e) => {
+                                    const pct = parseFloat(e.target.value) || 0;
+                                    const amt = formData.amount || 0;
+                                    const calculatedIGST = parseFloat(((amt * pct) / 100).toFixed(2));
+                                    const calculatedTotalCost = parseFloat((amt + calculatedIGST).toFixed(2));
+                                    const qty = formData.quantity || 0;
+                                    setFormData({
+                                      ...formData,
+                                      igstPercent: pct,
+                                      igst: calculatedIGST,
+                                      cgst: 0,
+                                      sgst: 0,
+                                      totalCost: calculatedTotalCost,
+                                      pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                    });
+                                  }}
+                                />
+                              </div>
+                              <div className="w-2/3">
+                                <input 
+                                  type="number" 
+                                  placeholder="0.00"
+                                  className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                  value={formData.igst !== undefined ? formData.igst : ''}
+                                  onChange={(e) => {
+                                    const ig = parseFloat(e.target.value) || 0;
+                                    const subAmt = formData.amount || 0;
+                                    const calculatedTotalCost = parseFloat((subAmt + ig).toFixed(2));
+                                    const qty = formData.quantity || 0;
+                                    setFormData({
+                                      ...formData,
+                                      igst: ig,
+                                      cgst: 0,
+                                      sgst: 0,
+                                      totalCost: calculatedTotalCost,
+                                      pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                    });
+                                  }}
+                                  onWheel={(e) => e.currentTarget.blur()}
+                                />
+                              </div>
+                            </div>
                           </div>
                         ) : (
                           <>
                             <div className="space-y-2 animate-in fade-in duration-200">
                               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
-                                CGST ({getGSTPercentInline(formData.supplierId).cgstPercent}%) (₹)
+                                CGST Rate (%) &amp; Amount (₹)
                               </label>
-                              <input 
-                                type="number" 
-                                placeholder="0.00"
-                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                                value={formData.cgst !== undefined ? formData.cgst : ''}
-                                onChange={(e) => {
-                                  const cg = parseFloat(e.target.value) || 0;
-                                  const subAmt = formData.amount || 0;
-                                  const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
-                                  const qty = formData.quantity || 0;
-                                  setFormData({
-                                    ...formData,
-                                    cgst: cg,
-                                    igst: 0,
-                                    totalCost: calculatedTotalCost,
-                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                  });
-                                }}
-                                onWheel={(e) => e.currentTarget.blur()}
-                              />
+                              <div className="flex gap-2">
+                                <div className="w-1/3">
+                                  <input 
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="%"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
+                                    value={getActiveGSTPercents(formData).cgstPercent}
+                                    onChange={(e) => {
+                                      const pct = parseFloat(e.target.value) || 0;
+                                      const amt = formData.amount || 0;
+                                      const calculatedCGST = parseFloat(((amt * pct) / 100).toFixed(2));
+                                      const calculatedTotalCost = parseFloat((amt + calculatedCGST + (formData.sgst || 0)).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        cgstPercent: pct,
+                                        cgst: calculatedCGST,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div className="w-2/3">
+                                  <input 
+                                    type="number" 
+                                    placeholder="0.00"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                    value={formData.cgst !== undefined ? formData.cgst : ''}
+                                    onChange={(e) => {
+                                      const cg = parseFloat(e.target.value) || 0;
+                                      const subAmt = formData.amount || 0;
+                                      const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        cgst: cg,
+                                        igst: 0,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                  />
+                                </div>
+                              </div>
                             </div>
 
                             <div className="space-y-2 animate-in fade-in duration-200">
                               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
-                                SGST ({getGSTPercentInline(formData.supplierId).sgstPercent}%) (₹)
+                                SGST Rate (%) &amp; Amount (₹)
                               </label>
-                              <input 
-                                type="number" 
-                                placeholder="0.00"
-                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                                value={formData.sgst !== undefined ? formData.sgst : ''}
-                                onChange={(e) => {
-                                  const sg = parseFloat(e.target.value) || 0;
-                                  const subAmt = formData.amount || 0;
-                                  const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
-                                  const qty = formData.quantity || 0;
-                                  setFormData({
-                                    ...formData,
-                                    sgst: sg,
-                                    igst: 0,
-                                    totalCost: calculatedTotalCost,
-                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                  });
-                                }}
-                                onWheel={(e) => e.currentTarget.blur()}
-                              />
+                              <div className="flex gap-2">
+                                <div className="w-1/3">
+                                  <input 
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="%"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
+                                    value={getActiveGSTPercents(formData).sgstPercent}
+                                    onChange={(e) => {
+                                      const pct = parseFloat(e.target.value) || 0;
+                                      const amt = formData.amount || 0;
+                                      const calculatedSGST = parseFloat(((amt * pct) / 100).toFixed(2));
+                                      const calculatedTotalCost = parseFloat((amt + (formData.cgst || 0) + calculatedSGST).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        sgstPercent: pct,
+                                        sgst: calculatedSGST,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div className="w-2/3">
+                                  <input 
+                                    type="number" 
+                                    placeholder="0.00"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                    value={formData.sgst !== undefined ? formData.sgst : ''}
+                                    onChange={(e) => {
+                                      const sg = parseFloat(e.target.value) || 0;
+                                      const subAmt = formData.amount || 0;
+                                      const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        sgst: sg,
+                                        igst: 0,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                  />
+                                </div>
+                              </div>
                             </div>
                           </>
                         )}
@@ -1601,7 +1951,7 @@ export default function Inventory() {
                             checked={(formData.gstType || 'GST') === 'GST'}
                             onChange={() => {
                               const amt = formData.amount || 0;
-                              const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getGSTPercentInline(formData.supplierId);
+                              const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getActiveGSTPercents(formData);
                               let calculatedCGST = 0;
                               let calculatedSGST = 0;
                               let calculatedIGST = 0;
@@ -1691,7 +2041,7 @@ export default function Inventory() {
                         onChange={(e) => {
                           const amt = parseFloat(e.target.value) || 0;
                           const isGST = (formData.gstType || 'GST') === 'GST';
-                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getGSTPercentInline(formData.supplierId) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getActiveGSTPercents(formData) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
                           let calculatedCGST = 0;
                           let calculatedSGST = 0;
                           let calculatedIGST = 0;
@@ -1721,85 +2071,168 @@ export default function Inventory() {
 
                     {(formData.gstType || 'GST') === 'GST' && (
                       <>
-                        {getGSTPercentInline(formData.supplierId).isInterstate ? (
+                        {getActiveGSTPercents(formData).isInterstate ? (
                           <div className="space-y-2 animate-in fade-in duration-200">
                             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
-                              IGST ({getGSTPercentInline(formData.supplierId).igstPercent}%) (₹)
+                              IGST Rate (%) &amp; Amount (₹)
                             </label>
-                            <input 
-                              type="number" 
-                              placeholder="0.00"
-                              className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                              value={formData.igst !== undefined ? formData.igst : ''}
-                              onChange={(e) => {
-                                const ig = parseFloat(e.target.value) || 0;
-                                const subAmt = formData.amount || 0;
-                                const calculatedTotalCost = parseFloat((subAmt + ig).toFixed(2));
-                                const qty = formData.quantity || 0;
-                                setFormData({
-                                  ...formData,
-                                  igst: ig,
-                                  cgst: 0,
-                                  sgst: 0,
-                                  totalCost: calculatedTotalCost,
-                                  pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                });
-                              }}
-                              onWheel={(e) => e.currentTarget.blur()}
-                            />
+                            <div className="flex gap-2">
+                              <div className="w-1/3">
+                                <input 
+                                  type="number"
+                                  step="0.1"
+                                  placeholder="%"
+                                  className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
+                                  value={getActiveGSTPercents(formData).igstPercent}
+                                  onChange={(e) => {
+                                    const pct = parseFloat(e.target.value) || 0;
+                                    const amt = formData.amount || 0;
+                                    const calculatedIGST = parseFloat(((amt * pct) / 100).toFixed(2));
+                                    const calculatedTotalCost = parseFloat((amt + calculatedIGST).toFixed(2));
+                                    const qty = formData.quantity || 0;
+                                    setFormData({
+                                      ...formData,
+                                      igstPercent: pct,
+                                      igst: calculatedIGST,
+                                      cgst: 0,
+                                      sgst: 0,
+                                      totalCost: calculatedTotalCost,
+                                      pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                    });
+                                  }}
+                                />
+                              </div>
+                              <div className="w-2/3">
+                                <input 
+                                  type="number" 
+                                  placeholder="0.00"
+                                  className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                  value={formData.igst !== undefined ? formData.igst : ''}
+                                  onChange={(e) => {
+                                    const ig = parseFloat(e.target.value) || 0;
+                                    const subAmt = formData.amount || 0;
+                                    const calculatedTotalCost = parseFloat((subAmt + ig).toFixed(2));
+                                    const qty = formData.quantity || 0;
+                                    setFormData({
+                                      ...formData,
+                                      igst: ig,
+                                      cgst: 0,
+                                      sgst: 0,
+                                      totalCost: calculatedTotalCost,
+                                      pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                    });
+                                  }}
+                                  onWheel={(e) => e.currentTarget.blur()}
+                                />
+                              </div>
+                            </div>
                           </div>
                         ) : (
                           <>
                             <div className="space-y-2 animate-in fade-in duration-200">
-                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
-                                CGST ({getGSTPercentInline(formData.supplierId).cgstPercent}%) (₹)
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                                CGST Rate (%) &amp; Amount (₹)
                               </label>
-                              <input 
-                                type="number" 
-                                placeholder="0.00"
-                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                                value={formData.cgst !== undefined ? formData.cgst : ''}
-                                onChange={(e) => {
-                                  const cg = parseFloat(e.target.value) || 0;
-                                  const subAmt = formData.amount || 0;
-                                  const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
-                                  const qty = formData.quantity || 0;
-                                  setFormData({
-                                    ...formData,
-                                    cgst: cg,
-                                    igst: 0,
-                                    totalCost: calculatedTotalCost,
-                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                  });
-                                }}
-                                onWheel={(e) => e.currentTarget.blur()}
-                              />
+                              <div className="flex gap-2">
+                                <div className="w-1/3">
+                                  <input 
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="%"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
+                                    value={getActiveGSTPercents(formData).cgstPercent}
+                                    onChange={(e) => {
+                                      const pct = parseFloat(e.target.value) || 0;
+                                      const amt = formData.amount || 0;
+                                      const calculatedCGST = parseFloat(((amt * pct) / 100).toFixed(2));
+                                      const calculatedTotalCost = parseFloat((amt + calculatedCGST + (formData.sgst || 0)).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        cgstPercent: pct,
+                                        cgst: calculatedCGST,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div className="w-2/3">
+                                  <input 
+                                    type="number" 
+                                    placeholder="0.00"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                    value={formData.cgst !== undefined ? formData.cgst : ''}
+                                    onChange={(e) => {
+                                      const cg = parseFloat(e.target.value) || 0;
+                                      const subAmt = formData.amount || 0;
+                                      const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        cgst: cg,
+                                        igst: 0,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                  />
+                                </div>
+                              </div>
                             </div>
 
                             <div className="space-y-2 animate-in fade-in duration-200">
-                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
-                                SGST ({getGSTPercentInline(formData.supplierId).sgstPercent}%) (₹)
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
+                                SGST Rate (%) &amp; Amount (₹)
                               </label>
-                              <input 
-                                type="number" 
-                                placeholder="0.00"
-                                className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                                value={formData.sgst !== undefined ? formData.sgst : ''}
-                                onChange={(e) => {
-                                  const sg = parseFloat(e.target.value) || 0;
-                                  const subAmt = formData.amount || 0;
-                                  const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
-                                  const qty = formData.quantity || 0;
-                                  setFormData({
-                                    ...formData,
-                                    sgst: sg,
-                                    igst: 0,
-                                    totalCost: calculatedTotalCost,
-                                    pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                  });
-                                }}
-                                onWheel={(e) => e.currentTarget.blur()}
-                              />
+                              <div className="flex gap-2">
+                                <div className="w-1/3">
+                                  <input 
+                                    type="number"
+                                    step="0.1"
+                                    placeholder="%"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
+                                    value={getActiveGSTPercents(formData).sgstPercent}
+                                    onChange={(e) => {
+                                      const pct = parseFloat(e.target.value) || 0;
+                                      const amt = formData.amount || 0;
+                                      const calculatedSGST = parseFloat(((amt * pct) / 100).toFixed(2));
+                                      const calculatedTotalCost = parseFloat((amt + (formData.cgst || 0) + calculatedSGST).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        sgstPercent: pct,
+                                        sgst: calculatedSGST,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div className="w-2/3">
+                                  <input 
+                                    type="number" 
+                                    placeholder="0.00"
+                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
+                                    value={formData.sgst !== undefined ? formData.sgst : ''}
+                                    onChange={(e) => {
+                                      const sg = parseFloat(e.target.value) || 0;
+                                      const subAmt = formData.amount || 0;
+                                      const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
+                                      const qty = formData.quantity || 0;
+                                      setFormData({
+                                        ...formData,
+                                        sgst: sg,
+                                        igst: 0,
+                                        totalCost: calculatedTotalCost,
+                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                                      });
+                                    }}
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                  />
+                                </div>
+                              </div>
                             </div>
                           </>
                         )}
@@ -1879,7 +2312,7 @@ export default function Inventory() {
             <form onSubmit={handlePaymentSubmit} className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
               <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-slate-400 font-medium">Supplier & Entry</span>
+                  <span className="text-slate-400 font-medium">Supplier &amp; Entry</span>
                   <span className="font-bold text-slate-800">{paymentItem.supplierName} ({paymentItem.id})</span>
                 </div>
                 <div className="flex justify-between">
@@ -2023,6 +2456,181 @@ export default function Inventory() {
                     Record Payment
                   </button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isReturnDialogOpen && returnItem && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/45 backdrop-blur-sm animate-in fade-in duration-250">
+          <div className="bg-white w-full max-w-xl rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-rose-100 bg-gradient-to-r from-rose-50/50 to-amber-50/20 flex items-center justify-between shrink-0">
+              <div>
+                <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Purchase Return desk</span>
+                <h3 className="text-xl font-bold text-slate-800 mt-1 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-rose-500 animate-pulse" />
+                  Record Purchase Return
+                </h3>
+              </div>
+              <button 
+                onClick={() => { setIsReturnDialogOpen(false); setReturnItem(null); }}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <form onSubmit={handleReturnSubmit} className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-medium">Supplier &amp; Lot</span>
+                  <span className="font-bold text-slate-800">{returnItem.supplierName} ({returnItem.id})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-medium">Purchase Date</span>
+                  <span className="font-bold text-slate-600">{returnItem.entryDate}</span>
+                </div>
+                <hr className="border-slate-200/50" />
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-semibold">Available Stock</span>
+                  <span className="text-slate-800 font-bold text-sm">{returnItem.quantity} {returnItem.unit}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-semibold">Price per {returnItem.unit === 'KGs' ? 'KG' : (returnItem.unit === 'Meters' ? 'Meter' : 'Piece')}</span>
+                  <span className="text-slate-800 font-bold">₹{(returnItem.pricePerMeter || 0).toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Return Options */}
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const avail = returnItem.quantity;
+                      const refund = avail * (returnItem.pricePerMeter || 0);
+                      setReturnDetails({ 
+                        ...returnDetails, 
+                        isFullReturn: true, 
+                        returnedQuantity: avail,
+                        returnRefundAmount: parseFloat(refund.toFixed(2))
+                      });
+                    }}
+                    className={cn(
+                      "flex-1 p-4 rounded-2xl border text-center transition-all",
+                      returnDetails.isFullReturn 
+                        ? "border-rose-500 bg-rose-50/50 text-rose-800 font-bold" 
+                        : "border-slate-100 hover:border-slate-200 text-slate-500 hover:bg-slate-50"
+                    )}
+                  >
+                    <p className="text-[10px] uppercase tracking-wider font-extrabold mb-1">Full Return</p>
+                    <p className="text-sm">Return all {returnItem.quantity} {returnItem.unit}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReturnDetails({ ...returnDetails, isFullReturn: false });
+                    }}
+                    className={cn(
+                      "flex-1 p-4 rounded-2xl border text-center transition-all",
+                      !returnDetails.isFullReturn 
+                        ? "border-indigo-500 bg-indigo-50/50 text-indigo-800 font-bold" 
+                        : "border-slate-100 hover:border-slate-200 text-slate-500 hover:bg-slate-50"
+                    )}
+                  >
+                    <p className="text-[10px] uppercase tracking-wider font-extrabold mb-1">Partial Return</p>
+                    <p className="text-sm">Specify custom quantity</p>
+                  </button>
+                </div>
+
+                {!returnDetails.isFullReturn && (
+                  <div className="space-y-2 animate-in slide-in-from-top-2 duration-150">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Quantity to Return</label>
+                    <input 
+                      required
+                      type="number"
+                      step="any"
+                      max={returnItem.quantity}
+                      min={0.001}
+                      placeholder="0.00"
+                      className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                      value={returnDetails.returnedQuantity || ''}
+                      onChange={(e) => {
+                        const qty = parseFloat(e.target.value) || 0;
+                        const refund = qty * (returnItem.pricePerMeter || 0);
+                        setReturnDetails({ 
+                          ...returnDetails, 
+                          returnedQuantity: qty,
+                          returnRefundAmount: parseFloat(refund.toFixed(2))
+                        });
+                      }}
+                      onWheel={(e) => e.currentTarget.blur()}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Refund / Credit Value (₹)</label>
+                  <input 
+                    required
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                    value={returnDetails.returnRefundAmount || ''}
+                    onChange={(e) => setReturnDetails({ ...returnDetails, returnRefundAmount: parseFloat(e.target.value) || 0 })}
+                    onWheel={(e) => e.currentTarget.blur()}
+                  />
+                  <p className="text-[10px] text-slate-400 font-semibold px-1">Auto-calculated based on price. Can be adjusted for negotiation.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Return Date</label>
+                    <input 
+                      required
+                      type="date"
+                      className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                      value={returnDetails.returnDate}
+                      onChange={(e) => setReturnDetails({ ...returnDetails, returnDate: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Return Reason</label>
+                    <select
+                      className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm cursor-pointer"
+                      value={returnDetails.returnReason}
+                      onChange={(e) => setReturnDetails({ ...returnDetails, returnReason: e.target.value })}
+                    >
+                      <option value="Quality Issue">Quality Issue</option>
+                      <option value="Damaged Goods">Damaged Goods</option>
+                      <option value="Incorrect Specification">Incorrect Specification</option>
+                      <option value="Excess Stock">Excess Stock</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => { setIsReturnDialogOpen(false); setReturnItem(null); }}
+                  className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={returnDetails.returnedQuantity <= 0 || returnDetails.returnedQuantity > returnItem.quantity}
+                  className="flex-1 py-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-lg shadow-rose-100 transition-all disabled:opacity-50"
+                >
+                  Record Return
+                </button>
               </div>
             </form>
           </div>
