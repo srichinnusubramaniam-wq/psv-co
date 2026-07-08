@@ -669,7 +669,9 @@ export default function Billing() {
     const sgst = (!isNonGst && isTamilNadu) ? parseFloat(((baseForGst * sgstPercent) / 100).toFixed(2)) : 0;
     const igst = (!isNonGst && !isTamilNadu) ? parseFloat(((baseForGst * igstPercent) / 100).toFixed(2)) : 0;
     
-    const totalAmount = Math.round(baseForGst + cgst + sgst + igst + Number(roundOff));
+    const exactSum = baseForGst + cgst + sgst + igst;
+    const totalAmount = Math.round(exactSum);
+    const calculatedRoundOff = parseFloat((totalAmount - exactSum).toFixed(2));
     const words = numberToWords(totalAmount);
 
     return {
@@ -679,10 +681,11 @@ export default function Billing() {
       cgst,
       sgst,
       igst,
+      roundOff: calculatedRoundOff,
       totalAmount,
       amountInWords: words
     };
-  }, [billItems, packingCharges, overallDiscount, cgstPercent, sgstPercent, igstPercent, roundOff, isTamilNadu, isNonGst]);
+  }, [billItems, packingCharges, overallDiscount, cgstPercent, sgstPercent, igstPercent, isTamilNadu, isNonGst]);
 
   // Construct current invoice object from form state
   const getInvoiceFromForm = (): GeneratedInvoice => {
@@ -716,7 +719,7 @@ export default function Billing() {
       cgst,
       sgst,
       igst,
-      roundOff: Number(roundOff),
+      roundOff: billingCalculations.roundOff,
       totalAmount,
       amountInWords,
       transport: selectedTransport || 'None',
@@ -1938,7 +1941,7 @@ export default function Billing() {
             <div className="space-y-4">
               <p className="text-xs font-black text-slate-400 uppercase tracking-wide">Charges & Taxes Configuration</p>
               
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Packing & Handling (₹)</label>
                   <input 
@@ -1955,17 +1958,6 @@ export default function Billing() {
                     type="number" 
                     value={overallDiscount}
                     onChange={(e) => setOverallDiscount(parseFloat(e.target.value) || 0)}
-                    onWheel={(e) => e.currentTarget.blur()}
-                    className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Round Off adjustment (₹)</label>
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    value={roundOff}
-                    onChange={(e) => setRoundOff(parseFloat(e.target.value) || 0)}
                     onWheel={(e) => e.currentTarget.blur()}
                     className="w-full bg-slate-50 border-none rounded-xl px-3 py-2.5 text-sm font-semibold font-mono text-center"
                   />
@@ -2063,10 +2055,12 @@ export default function Billing() {
                     <span className="font-mono text-slate-700">₹{billingCalculations.igst.toLocaleString('en-IN')}</span>
                   </div>
                 )}
-                {roundOff !== 0 && (
+                {billingCalculations.roundOff !== 0 && (
                   <div className="flex justify-between text-xs font-bold text-slate-500">
                     <span>Round Off:</span>
-                    <span className="font-mono text-slate-700">₹{roundOff}</span>
+                    <span className="font-mono text-slate-700">
+                      {billingCalculations.roundOff > 0 ? '+' : ''}₹{billingCalculations.roundOff.toFixed(2)}
+                    </span>
                   </div>
                 )}
                 

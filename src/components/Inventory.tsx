@@ -212,6 +212,16 @@ export default function Inventory() {
     isFullReturn: true
   });
 
+  const [isAddReturnDialogOpen, setIsAddReturnDialogOpen] = useState(false);
+  const [addReturnDetails, setAddReturnDetails] = useState({
+    supplierId: '',
+    selectedPurchaseId: '',
+    returnedQuantity: 0,
+    returnDate: new Date().toISOString().split('T')[0],
+    returnReason: 'Quality Issue',
+    returnRefundAmount: 0
+  });
+
   const openReturnDialog = (item: InventoryItem) => {
     setReturnItem(item);
     const availableQty = item.quantity;
@@ -261,6 +271,49 @@ export default function Inventory() {
     saveToLocal(updated);
     setIsReturnDialogOpen(false);
     setReturnItem(null);
+  };
+
+  const handleAddReturnSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const purchase = items.find(item => item.id === addReturnDetails.selectedPurchaseId);
+    if (!purchase) return;
+
+    const qtyToReturn = parseFloat(String(addReturnDetails.returnedQuantity)) || 0;
+    if (qtyToReturn <= 0 || qtyToReturn > purchase.quantity) {
+      return;
+    }
+
+    const price = purchase.pricePerMeter || 0;
+    
+    const updated = items.map(item => {
+      if (item.id === purchase.id) {
+        const newQty = parseFloat(Math.max(0, item.quantity - qtyToReturn).toFixed(3));
+        const updatedTotalCost = parseFloat((newQty * price).toFixed(2));
+        
+        return {
+          ...item,
+          quantity: newQty,
+          totalCost: updatedTotalCost,
+          isReturned: true,
+          returnedQuantity: parseFloat(((item.returnedQuantity || 0) + qtyToReturn).toFixed(3)),
+          returnDate: addReturnDetails.returnDate,
+          returnReason: addReturnDetails.returnReason,
+          returnRefundAmount: parseFloat(((item.returnRefundAmount || 0) + (parseFloat(String(addReturnDetails.returnRefundAmount)) || 0)).toFixed(2))
+        };
+      }
+      return item;
+    });
+
+    saveToLocal(updated);
+    setIsAddReturnDialogOpen(false);
+    setAddReturnDetails({
+      supplierId: '',
+      selectedPurchaseId: '',
+      returnedQuantity: 0,
+      returnDate: new Date().toISOString().split('T')[0],
+      returnReason: 'Quality Issue',
+      returnRefundAmount: 0
+    });
   };
   
   const handleUndoReturn = (itemToUndo: InventoryItem) => {
@@ -741,11 +794,26 @@ export default function Inventory() {
 
           <button 
             type="button"
-            onClick={() => { resetForm(); setIsFormOpen(true); }}
+            onClick={() => { 
+              if (activeTab === 'purchase_return') {
+                setAddReturnDetails({
+                  supplierId: '',
+                  selectedPurchaseId: '',
+                  returnedQuantity: 0,
+                  returnDate: new Date().toISOString().split('T')[0],
+                  returnReason: 'Quality Issue',
+                  returnRefundAmount: 0
+                });
+                setIsAddReturnDialogOpen(true);
+              } else {
+                resetForm(); 
+                setIsFormOpen(true); 
+              }
+            }}
             className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
           >
             <Plus className="w-4 h-4" />
-            Add Raw Materials
+            {activeTab === 'purchase_return' ? 'Add Purchase Return' : 'Add Raw Materials'}
           </button>
         </div>
       </div>
@@ -1901,6 +1969,43 @@ export default function Inventory() {
                       </select>
                     </div>
 
+                    <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Quantity (Meters)</label>
+                      <input 
+                        required
+                        type="number" 
+                        step="any"
+                        placeholder="Enter quantity in meters"
+                        min="0.001"
+                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
+                        value={formData.quantity !== undefined && formData.quantity !== 0 ? formData.quantity : ''}
+                        onChange={(e) => {
+                          const qty = parseFloat(e.target.value) || 0;
+                          const isGST = (formData.gstType || 'GST') === 'GST';
+                          const amt = formData.amount || 0;
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getActiveGSTPercents(formData) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
+                          let calculatedCGST = 0;
+                          let calculatedSGST = 0;
+                          let calculatedIGST = 0;
+                          if (isGST) {
+                            if (isInterstate) {
+                              calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                            } else {
+                              calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                              calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                            }
+                          }
+                          const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
+                          setFormData({
+                            ...formData,
+                            quantity: qty,
+                            pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
+                          });
+                        }}
+                        onWheel={(e) => e.currentTarget.blur()}
+                      />
+                    </div>
+
                     <div className="space-y-2">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
                       <input 
@@ -2630,6 +2735,237 @@ export default function Inventory() {
                   className="flex-1 py-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold shadow-lg shadow-rose-100 transition-all disabled:opacity-50"
                 >
                   Record Return
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isAddReturnDialogOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">Add Purchase Return</h3>
+                <p className="text-sm text-slate-500">Record a purchase return against an active purchase lot.</p>
+              </div>
+              <button 
+                onClick={() => setIsAddReturnDialogOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddReturnSubmit} className="p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              {/* Select Supplier */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Select Supplier with ID</label>
+                <select 
+                  required
+                  className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm cursor-pointer"
+                  value={addReturnDetails.supplierId}
+                  onChange={(e) => {
+                    const suppId = e.target.value;
+                    setAddReturnDetails({
+                      ...addReturnDetails,
+                      supplierId: suppId,
+                      selectedPurchaseId: '',
+                      returnedQuantity: 0,
+                      returnRefundAmount: 0
+                    });
+                  }}
+                >
+                  <option value="">Select Supplier with ID</option>
+                  {suppliers.filter(s => s && s.id).map(s => (
+                    <option key={s.id} value={s.id}>{s.name || s.companyName} ({s.id}){s.state ? ` - ${s.state}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Select Purchase Lot */}
+              {addReturnDetails.supplierId && (
+                <div className="space-y-2 animate-in fade-in duration-200">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Select Purchase Lot / Item</label>
+                  <select
+                    required
+                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm cursor-pointer"
+                    value={addReturnDetails.selectedPurchaseId}
+                    onChange={(e) => {
+                      const purId = e.target.value;
+                      const p = items.find(item => item.id === purId);
+                      if (p) {
+                        setAddReturnDetails({
+                          ...addReturnDetails,
+                          selectedPurchaseId: purId,
+                          returnedQuantity: p.quantity,
+                          returnRefundAmount: parseFloat(((p.pricePerMeter || 0) * p.quantity).toFixed(2))
+                        });
+                      }
+                    }}
+                  >
+                    <option value="">-- Choose Active Purchase Lot --</option>
+                    {items
+                      .filter(item => {
+                        const selectedSupplier = suppliers.find(s => s && s.id === addReturnDetails.supplierId);
+                        const isMatch = item.supplierId === addReturnDetails.supplierId || 
+                          (selectedSupplier && (item.supplierName === selectedSupplier.name || item.supplierName === selectedSupplier.companyName));
+                        return isMatch && item.quantity > 0;
+                      })
+                      .map(item => (
+                        <option key={item.id} value={item.id}>
+                          Lot {item.id} - {item.fabricType || item.rawMaterialType} ({item.quantity} {item.unit}) - Price: ₹{item.pricePerMeter}/unit - Date: {item.entryDate}
+                        </option>
+                      ))
+                    }
+                  </select>
+                  {items.filter(item => {
+                    const selectedSupplier = suppliers.find(s => s && s.id === addReturnDetails.supplierId);
+                    const isMatch = item.supplierId === addReturnDetails.supplierId || 
+                      (selectedSupplier && (item.supplierName === selectedSupplier.name || item.supplierName === selectedSupplier.companyName));
+                    return isMatch && item.quantity > 0;
+                  }).length === 0 && (
+                    <p className="text-xs text-amber-600 font-semibold px-1 mt-1">
+                      No active purchase lots found for this supplier with available stock.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* If Purchase Lot is selected, show quantity and date fields */}
+              {addReturnDetails.selectedPurchaseId && (() => {
+                const p = items.find(item => item.id === addReturnDetails.selectedPurchaseId);
+                if (!p) return null;
+                return (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Fabric Type</span>
+                        <span className="font-bold text-slate-800">{p.fabricType || p.rawMaterialType}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-medium">Original Purchase Date</span>
+                        <span className="font-bold text-slate-600">{p.entryDate}</span>
+                      </div>
+                      <hr className="border-slate-200/50" />
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-semibold">Available Quantity</span>
+                        <span className="text-slate-800 font-bold text-sm">{p.quantity} {p.unit}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-semibold">Unit Cost</span>
+                        <span className="text-slate-800 font-bold">₹{(p.pricePerMeter || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Return Quantity input */}
+                      <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Quantity to Return ({p.unit})</label>
+                        <input 
+                          required
+                          type="number"
+                          step="any"
+                          min="0.001"
+                          max={p.quantity}
+                          placeholder="0.00"
+                          className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                          value={addReturnDetails.returnedQuantity || ''}
+                          onChange={(e) => {
+                            const qty = parseFloat(e.target.value) || 0;
+                            const refund = qty * (p.pricePerMeter || 0);
+                            setAddReturnDetails({
+                              ...addReturnDetails,
+                              returnedQuantity: qty,
+                              returnRefundAmount: parseFloat(refund.toFixed(2))
+                            });
+                          }}
+                          onWheel={(e) => e.currentTarget.blur()}
+                        />
+                        <p className="text-[10px] text-slate-400 font-semibold px-1">Maximum: {p.quantity} {p.unit}</p>
+                      </div>
+
+                      {/* Refund Value */}
+                      <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Refund / Credit Value (₹)</label>
+                        <input 
+                          required
+                          type="number"
+                          step="any"
+                          placeholder="0.00"
+                          className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                          value={addReturnDetails.returnRefundAmount || ''}
+                          onChange={(e) => setAddReturnDetails({
+                            ...addReturnDetails,
+                            returnRefundAmount: parseFloat(e.target.value) || 0
+                          })}
+                          onWheel={(e) => e.currentTarget.blur()}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Return Date field added */}
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Return Date</label>
+                        <input 
+                          required
+                          type="date"
+                          className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                          value={addReturnDetails.returnDate}
+                          onChange={(e) => setAddReturnDetails({
+                            ...addReturnDetails,
+                            returnDate: e.target.value
+                          })}
+                        />
+                      </div>
+
+                      {/* Return Reason field */}
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Return Reason</label>
+                        <select
+                          className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm cursor-pointer"
+                          value={addReturnDetails.returnReason}
+                          onChange={(e) => setAddReturnDetails({
+                            ...addReturnDetails,
+                            returnReason: e.target.value
+                          })}
+                        >
+                          <option value="Quality Issue">Quality Issue</option>
+                          <option value="Damaged Goods">Damaged Goods</option>
+                          <option value="Incorrect Specification">Incorrect Specification</option>
+                          <option value="Excess Stock">Excess Stock</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Actions */}
+              <div className="pt-4 flex gap-3 shrink-0">
+                <button 
+                  type="button"
+                  onClick={() => setIsAddReturnDialogOpen(false)}
+                  className="flex-1 py-4 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold hover:bg-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={
+                    !addReturnDetails.selectedPurchaseId || 
+                    addReturnDetails.returnedQuantity <= 0 || 
+                    (() => {
+                      const p = items.find(item => item.id === addReturnDetails.selectedPurchaseId);
+                      return p ? addReturnDetails.returnedQuantity > p.quantity : true;
+                    })()
+                  }
+                  className="flex-1 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-lg shadow-indigo-100 transition-all disabled:opacity-50"
+                >
+                  Log Return
                 </button>
               </div>
             </form>
