@@ -235,5 +235,9 @@ input[type="number"] {
   .invoice-print-container .min-h-\[200px\] {
     min-height: 0 !important;
   }
+
+  .invoice-page {
+    page-break-inside: avoid !important;
+  }
 }
 
