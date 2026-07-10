@@ -161,13 +161,46 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
         {/* Actual Invoice Content */}
         {(() => {
           const items = previewInvoice.items || [];
-          const ITEMS_PER_PAGE = 15;
+          const itemsWithIndex = items.map((item, idx) => ({ item, globalIdx: idx }));
           const chunkedItems = [];
-          if (items.length === 0) {
+          
+          if (itemsWithIndex.length === 0) {
             chunkedItems.push([]);
+          } else if (itemsWithIndex.length <= 8) {
+            // Fits perfectly on a single page with header and bank details
+            chunkedItems.push(itemsWithIndex);
           } else {
-            for (let i = 0; i < items.length; i += ITEMS_PER_PAGE) {
-              chunkedItems.push(items.slice(i, i + ITEMS_PER_PAGE));
+            // Multi-page layout:
+            // First page (with header): max 15 items (split nicely if total is 9-15)
+            // Middle pages (no header): max 25 items
+            // Last page (no header, with bank details): max 14 items
+            let currentIndex = 0;
+            
+            let firstPageSize = 15;
+            if (itemsWithIndex.length > 8 && itemsWithIndex.length <= 15) {
+              firstPageSize = 8;
+            } else {
+              firstPageSize = Math.min(itemsWithIndex.length - 1, 15);
+            }
+            
+            chunkedItems.push(itemsWithIndex.slice(0, firstPageSize));
+            currentIndex = firstPageSize;
+            
+            // Add middle and last pages
+            while (currentIndex < itemsWithIndex.length) {
+              const remainingCount = itemsWithIndex.length - currentIndex;
+              
+              // If remaining items fit in the last page capacity (14)
+              if (remainingCount <= 14) {
+                chunkedItems.push(itemsWithIndex.slice(currentIndex));
+                break;
+              } else {
+                // Otherwise, take a middle page size (up to 25 items)
+                // Ensure at least 1 item is left for the last page
+                const middlePageSize = Math.min(remainingCount - 1, 25);
+                chunkedItems.push(itemsWithIndex.slice(currentIndex, currentIndex + middlePageSize));
+                currentIndex += middlePageSize;
+              }
             }
           }
           const totalPages = chunkedItems.length;
@@ -188,210 +221,217 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                 <div className="border-[1.5px] border-slate-800 p-0 flex-1 flex flex-col justify-between">
                   {/* Top content */}
                   <div className="flex flex-col">
-                    {/* Header */}
-                    <div className="grid grid-cols-[120px_1fr_150px] border-b-[1.5px] border-slate-800 p-4 items-center bg-white">
-                      {/* Left Column: Logo */}
-                      <div className="flex justify-start">
-                        <div className="w-[100px] h-[100px] bg-white flex items-center justify-center border border-slate-200 overflow-hidden">
-                          {appSettings.companyLogo ? (
-                            <img 
-                              src={appSettings.companyLogo} 
-                              alt="Logo" 
-                              className="max-w-full max-h-full object-contain"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <span className="font-serif italic text-3xl font-bold text-slate-800">V</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Center Column: Company Information */}
-                      <div className="text-center flex flex-col items-center space-y-1">
-                        {/* Small symbol above 'V' in P.S.V */}
-                        <div className="text-xs font-bold text-slate-700 tracking-widest leading-none">
-                          ≌
-                        </div>
-                        <div className="text-3xl font-black uppercase tracking-wider text-red-800 flex flex-col items-center leading-none">
-                          <span className="text-center font-black text-3xl text-red-800 tracking-wider">
-                            {previewInvoice.companyName || 'P.S.V & CO'}
-                          </span>
-                        </div>
-                        {!((previewInvoice.companyAddress || '').toUpperCase().includes('MFRS') || (previewInvoice.companyAddress || '').toUpperCase().includes('HANDLOOM')) && (
-                          <div className="text-[11px] font-extrabold uppercase tracking-wide text-slate-800">
-                            Mfrs. & Wholesale Handloom Cloth Merchants
-                          </div>
-                        )}
-                        <div className="text-[10px] font-bold text-slate-700 whitespace-pre-line leading-normal text-center uppercase">
-                          {previewInvoice.companyAddress || ''}
-                        </div>
-                        <div className="bg-[#fcf8ef] border border-amber-200/60 px-4 py-0.5 mt-1 rounded-sm">
-                          <div className="text-[11px] font-black tracking-wider text-slate-800 flex items-center justify-center gap-1">
-                            <span>GSTIN:</span>
-                            <EditableInvoiceField
-                              value={previewInvoice.companyGstin || ''}
-                              onChange={(val) => updatePreviewField('companyGstin', val)}
-                              className="font-black text-[11px] bg-transparent p-0 border-none h-auto w-32 text-left outline-none uppercase"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Column: Contact & Brand Box */}
-                      <div className="flex flex-col items-end justify-between h-full py-1 space-y-3">
-                        <div className="text-[12px] font-black text-slate-900 flex items-center gap-1">
-                          <span className="text-slate-700 text-[14px]">Å</span>
-                          <EditableInvoiceField
-                            value={previewInvoice.companyPhone || ''}
-                            onChange={(val) => updatePreviewField('companyPhone', val)}
-                            className="font-black text-[12px] bg-transparent p-0 border-none h-auto w-28 text-right outline-none"
-                          />
-                        </div>
-                        
-                        <div className="border-2 border-blue-900 px-4 py-1.5 text-center rounded-sm bg-white">
-                          <span className="font-serif font-black text-2xl tracking-widest text-blue-900 leading-none">PSV</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Billed To / TAX INVOICE Header Banner Grid */}
-                    <div className="grid grid-cols-2 border-b-[1.5px] border-slate-800">
-                      {/* Left column title: Billed To */}
-                      <div className="bg-[#eec5a8] text-slate-900 font-extrabold text-[12px] uppercase text-center py-1 tracking-wider border-r-[1.5px] border-slate-800">
-                        Billed To
-                      </div>
-                      {/* Right column title: TAX INVOICE */}
-                      <div className="bg-[#f1b3d0] text-slate-900 font-extrabold text-[12px] uppercase text-center py-1 tracking-wider">
-                        TAX INVOICE
-                      </div>
-                    </div>
-
-                    {/* Billed To / TAX INVOICE Details Content Grid */}
-                    <div className="grid grid-cols-2 border-b-[1.5px] border-slate-800">
-                      {/* Left Column Content: Buyer Details */}
-                      <div className="p-3 border-r-[1.5px] border-slate-800 flex flex-col justify-between text-[11px] space-y-1 bg-white">
-                        <div className="space-y-1">
-                          <div className="font-black text-sm uppercase flex items-center">
-                            <span className="mr-1">M/s.</span>
-                            <span className="font-black text-sm uppercase">{previewInvoice.buyer?.name || ''}</span>
-                          </div>
-                          {previewInvoice.buyerSubHeader && (
-                            <div className="text-[11px] font-bold text-slate-700 uppercase">
-                              {previewInvoice.buyerSubHeader}
+                    {isFirstPage && (
+                      <>
+                        {/* Header */}
+                        <div className="grid grid-cols-[120px_1fr_150px] border-b-[1.5px] border-slate-800 p-4 items-center bg-white">
+                          {/* Left Column: Logo */}
+                          <div className="flex justify-start">
+                            <div className="w-[100px] h-[100px] bg-white flex items-center justify-center border border-slate-200 overflow-hidden">
+                              {appSettings.companyLogo ? (
+                                <img 
+                                  src={appSettings.companyLogo} 
+                                  alt="Logo" 
+                                  className="max-w-full max-h-full object-contain"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <span className="font-serif italic text-3xl font-bold text-slate-800">V</span>
+                              )}
                             </div>
-                          )}
-                          <div className="text-[11px] font-bold text-slate-800 whitespace-pre-line leading-relaxed uppercase">
-                            {previewInvoice.buyer?.address || ''}
                           </div>
-                        </div>
-                        
-                        <div className="flex justify-between items-center mt-2 pt-1 border-t border-slate-100">
-                          <div className="flex items-center gap-1 font-black">
-                            <span>GSTIN:</span>
-                            <span className="font-black text-[11px] uppercase">{previewInvoice.buyer?.gstin || ''}</span>
-                          </div>
-                          
-                          {previewInvoice.buyer?.phone && (
-                            <div className="border border-slate-400 px-2 py-0.5 text-[11px] font-bold rounded-sm flex items-center gap-1 bg-white">
-                              <span>Phone:</span>
-                              <span className="font-bold text-[11px]">{previewInvoice.buyer?.phone}</span>
+
+                          {/* Center Column: Company Information */}
+                          <div className="text-center flex flex-col items-center space-y-1">
+                            {/* Small symbol above 'V' in P.S.V */}
+                            <div className="text-xs font-bold text-slate-700 tracking-widest leading-none">
+                              ≌
                             </div>
-                          )}
-                        </div>
-                      </div>
+                            <div className="text-3xl font-black uppercase tracking-wider text-red-800 flex flex-col items-center leading-none">
+                              <span className="text-center font-black text-3xl text-red-800 tracking-wider">
+                                {previewInvoice.companyName || 'P.S.V & CO'}
+                              </span>
+                            </div>
+                            {!((previewInvoice.companyAddress || '').toUpperCase().includes('MFRS') || (previewInvoice.companyAddress || '').toUpperCase().includes('HANDLOOM')) && (
+                              <div className="text-[11px] font-extrabold uppercase tracking-wide text-slate-800">
+                                Mfrs. & Wholesale Handloom Cloth Merchants
+                              </div>
+                            )}
+                            <div className="text-[10px] font-bold text-slate-700 whitespace-pre-line leading-normal text-center uppercase">
+                              {previewInvoice.companyAddress || ''}
+                            </div>
+                            <div className="bg-[#fcf8ef] border border-amber-200/60 px-4 py-0.5 mt-1 rounded-sm">
+                              <div className="text-[11px] font-black tracking-wider text-slate-800 flex items-center justify-center gap-1">
+                                <span>GSTIN:</span>
+                                <EditableInvoiceField
+                                  value={previewInvoice.companyGstin || ''}
+                                  onChange={(val) => updatePreviewField('companyGstin', val)}
+                                  className="font-black text-[11px] bg-transparent p-0 border-none h-auto w-32 text-left outline-none uppercase"
+                                />
+                              </div>
+                            </div>
+                          </div>
 
-                      {/* Right Column Content: Invoice Details */}
-                      <div className="p-3 text-[12px] flex flex-col justify-center space-y-3 bg-white">
-                        <div className="flex items-center">
-                          <span className="w-24 font-extrabold text-slate-800">Bill No.:</span>
-                          <span className="font-black flex-1 flex items-center text-[13px]">
-                            <EditableInvoiceField
-                              value={previewInvoice.invoiceNo}
-                              onChange={(val) => updatePreviewField('invoiceNo', val)}
-                              className="font-black text-[13px] bg-transparent p-0 border-none h-auto outline-none"
-                            />
-                          </span>
+                          {/* Right Column: Contact & Brand Box */}
+                          <div className="flex flex-col items-end justify-between h-full py-1 space-y-3">
+                            <div className="text-[12px] font-black text-slate-900 flex items-center gap-1">
+                              <span className="text-slate-700 text-[14px]">Å</span>
+                              <EditableInvoiceField
+                                value={previewInvoice.companyPhone || ''}
+                                onChange={(val) => updatePreviewField('companyPhone', val)}
+                                className="font-black text-[12px] bg-transparent p-0 border-none h-auto w-28 text-right outline-none"
+                              />
+                            </div>
+                            
+                            <div className="border-2 border-blue-900 px-4 py-1.5 text-center rounded-sm bg-white">
+                              <span className="font-serif font-black text-2xl tracking-widest text-blue-900 leading-none">PSV</span>
+                            </div>
+                          </div>
                         </div>
-                        
-                        <div className="flex items-center">
-                          <span className="w-24 font-extrabold text-slate-800">Date:</span>
-                          <span className="font-black flex-1 flex items-center">
-                            <EditableInvoiceField
-                              value={previewInvoice.date}
-                              onChange={(val) => updatePreviewField('date', val)}
-                              className="font-black bg-transparent p-0 border-none h-auto outline-none"
-                            />
-                          </span>
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Transport & Logistics Section */}
-                    <div className="grid grid-cols-2 border-b-[1.5px] border-slate-800 text-[11px] font-bold bg-white">
-                      {/* Left Block */}
-                      <div className="p-2 border-r-[1.5px] border-slate-800 space-y-1">
-                        <div className="flex items-center">
-                          <span className="w-20 text-slate-700">Source</span>
-                          <span className="font-black flex-1 flex items-center">
-                            :&nbsp;
-                            <EditableInvoiceField
-                              value={previewInvoice.source || 'SALEM'}
-                              onChange={(val) => updatePreviewField('source', val)}
-                              className="font-black bg-transparent p-0 border-none h-auto outline-none uppercase"
-                            />
-                          </span>
+                        {/* Billed To / TAX INVOICE Header Banner Grid */}
+                        <div className="grid grid-cols-2 border-b-[1.5px] border-slate-800">
+                          {/* Left column title: Billed To */}
+                          <div className="bg-[#eec5a8] text-slate-900 font-extrabold text-[12px] uppercase text-center py-1 tracking-wider border-r-[1.5px] border-slate-800">
+                            Billed To
+                          </div>
+                          {/* Right column title: TAX INVOICE */}
+                          <div className="bg-[#f1b3d0] text-slate-900 font-extrabold text-[12px] uppercase text-center py-1 tracking-wider">
+                            TAX INVOICE
+                          </div>
                         </div>
-                        <div className="flex items-center">
-                          <span className="w-20 text-slate-700">LR No.</span>
-                          <span className="font-black flex-1 flex items-center gap-1">
-                            :&nbsp;
-                            <EditableInvoiceField
-                              value={previewInvoice.lrNo || ''}
-                              onChange={(val) => updatePreviewField('lrNo', val)}
-                              placeholder="LR No"
-                              className="font-black bg-transparent p-0 border-none h-auto w-24 outline-none uppercase"
-                            />
-                            <span className="text-slate-500 font-normal">Date:</span>
-                            <EditableInvoiceField
-                              value={previewInvoice.lrDate || ''}
-                              onChange={(val) => updatePreviewField('lrDate', val)}
-                              placeholder="LR Date"
-                              className="font-black bg-transparent p-0 border-none h-auto w-24 outline-none"
-                            />
-                          </span>
-                        </div>
-                      </div>
 
-                      {/* Right Block */}
-                      <div className="p-2 space-y-1">
-                        <div className="flex items-center">
-                          <span className="w-36 text-slate-700">Despatched Through</span>
-                          <span className="font-black flex-1 flex items-center">
-                            :&nbsp;
-                            <EditableInvoiceField
-                              value={previewInvoice.despatchedThrough || ''}
-                              onChange={(val) => updatePreviewField('despatchedThrough', val)}
-                              className="font-black bg-transparent p-0 border-none h-auto outline-none uppercase"
-                            />
-                          </span>
+                        {/* Billed To / TAX INVOICE Details Content Grid */}
+                        <div className="grid grid-cols-2 border-b-[1.5px] border-slate-800">
+                          {/* Left Column Content: Buyer Details */}
+                          <div className="p-3 border-r-[1.5px] border-slate-800 flex flex-col justify-between text-[11px] space-y-1 bg-white">
+                            <div className="space-y-1">
+                              <div className="font-black text-sm uppercase flex items-center">
+                                <span className="mr-1">M/s.</span>
+                                <span className="font-black text-sm uppercase">{previewInvoice.buyer?.name || ''}</span>
+                              </div>
+                              {previewInvoice.buyerSubHeader && (
+                                <div className="text-[11px] font-bold text-slate-700 uppercase">
+                                  {previewInvoice.buyerSubHeader}
+                                </div>
+                              )}
+                              <div className="text-[11px] font-bold text-slate-800 whitespace-pre-line leading-relaxed uppercase">
+                                {previewInvoice.buyer?.address || ''}
+                              </div>
+                            </div>
+                            
+                            <div className="flex justify-between items-center mt-2 pt-1 border-t border-slate-100">
+                              <div className="flex items-center gap-1 font-black">
+                                <span>GSTIN:</span>
+                                <span className="font-black text-[11px] uppercase">{previewInvoice.buyer?.gstin || ''}</span>
+                              </div>
+                              
+                              {previewInvoice.buyer?.phone && (
+                                <div className="border border-slate-400 px-2 py-0.5 text-[11px] font-bold rounded-sm flex items-center gap-1 bg-white">
+                                  <span>Phone:</span>
+                                  <span className="font-bold text-[11px]">{previewInvoice.buyer?.phone}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right Column Content: Invoice Details */}
+                          <div className="p-3 text-[12px] flex flex-col justify-center space-y-3 bg-white">
+                            <div className="flex items-center">
+                              <span className="w-24 font-extrabold text-slate-800">Bill No.:</span>
+                              <span className="font-black flex-1 flex items-center text-[13px]">
+                                <EditableInvoiceField
+                                  value={previewInvoice.invoiceNo}
+                                  onChange={(val) => updatePreviewField('invoiceNo', val)}
+                                  className="font-black text-[13px] bg-transparent p-0 border-none h-auto outline-none"
+                                />
+                              </span>
+                            </div>
+                            
+                            <div className="flex items-center">
+                              <span className="w-24 font-extrabold text-slate-800">Date:</span>
+                              <span className="font-black flex-1 flex items-center">
+                                <EditableInvoiceField
+                                  value={previewInvoice.date}
+                                  onChange={(val) => updatePreviewField('date', val)}
+                                  className="font-black bg-transparent p-0 border-none h-auto outline-none"
+                                />
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center">
-                          <span className="w-36 text-slate-700">No. of Bundles</span>
-                          <span className="font-black flex-1 flex items-center">
-                            :&nbsp;
-                            <EditableInvoiceField
-                              value={previewInvoice.noOfBundles || ''}
-                              onChange={(val) => updatePreviewField('noOfBundles', val)}
-                              placeholder="Bundles"
-                              className="font-black bg-transparent p-0 border-none h-auto outline-none w-16"
-                            />
-                          </span>
+
+                        {/* Transport & Logistics Section */}
+                        <div className="grid grid-cols-2 border-b-[1.5px] border-slate-800 text-[11px] font-bold bg-white">
+                          {/* Left Block */}
+                          <div className="p-2 border-r-[1.5px] border-slate-800 space-y-1">
+                            <div className="flex items-center">
+                              <span className="w-20 text-slate-700">Source</span>
+                              <span className="font-black flex-1 flex items-center">
+                                :&nbsp;
+                                <EditableInvoiceField
+                                  value={previewInvoice.source || 'SALEM'}
+                                  onChange={(val) => updatePreviewField('source', val)}
+                                  className="font-black bg-transparent p-0 border-none h-auto outline-none uppercase"
+                                />
+                              </span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="w-20 text-slate-700">LR No.</span>
+                              <span className="font-black flex-1 flex items-center gap-1">
+                                :&nbsp;
+                                <EditableInvoiceField
+                                  value={previewInvoice.lrNo || ''}
+                                  onChange={(val) => updatePreviewField('lrNo', val)}
+                                  placeholder="LR No"
+                                  className="font-black bg-transparent p-0 border-none h-auto w-24 outline-none uppercase"
+                                />
+                                <span className="text-slate-500 font-normal">Date:</span>
+                                <EditableInvoiceField
+                                  value={previewInvoice.lrDate || ''}
+                                  onChange={(val) => updatePreviewField('lrDate', val)}
+                                  placeholder="LR Date"
+                                  className="font-black bg-transparent p-0 border-none h-auto w-24 outline-none"
+                                />
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Right Block */}
+                          <div className="p-2 space-y-1">
+                            <div className="flex items-center">
+                              <span className="w-36 text-slate-700">Despatched Through</span>
+                              <span className="font-black flex-1 flex items-center">
+                                :&nbsp;
+                                <EditableInvoiceField
+                                  value={previewInvoice.despatchedThrough || ''}
+                                  onChange={(val) => updatePreviewField('despatchedThrough', val)}
+                                  className="font-black bg-transparent p-0 border-none h-auto outline-none uppercase"
+                                />
+                              </span>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="w-36 text-slate-700">No. of Bundles</span>
+                              <span className="font-black flex-1 flex items-center">
+                                :&nbsp;
+                                <EditableInvoiceField
+                                  value={previewInvoice.noOfBundles || ''}
+                                  onChange={(val) => updatePreviewField('noOfBundles', val)}
+                                  placeholder="Bundles"
+                                  className="font-black bg-transparent p-0 border-none h-auto outline-none w-16"
+                                />
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      </>
+                    )}
 
                     {/* Table */}
-                    <div className="flex-1 flex flex-col min-h-[200px] print:min-h-0 border-b-[1.5px] border-slate-800 bg-white">
+                    <div className={cn(
+                      "flex-1 flex flex-col min-h-[200px] print:min-h-0 border-b-[1.5px] border-slate-800 bg-white",
+                      !isFirstPage ? "border-t-[1.5px] border-slate-800" : ""
+                    )}>
                       <table className="w-full text-left text-[12px] border-collapse">
                         <thead>
                           <tr className="bg-[#f1b3d0] text-slate-900 font-extrabold text-center border-b-[1.5px] border-slate-800">
@@ -405,8 +445,9 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                           </tr>
                         </thead>
                         <tbody>
-                          {pageItems.map((item: any, itemIdx: number) => {
-                            const globalIdx = pageIdx * ITEMS_PER_PAGE + itemIdx;
+                          {pageItems.map((entry: any, itemIdx: number) => {
+                            const item = entry.item || entry;
+                            const globalIdx = typeof entry.globalIdx === 'number' ? entry.globalIdx : itemIdx;
                             return (
                               <tr key={item.id || globalIdx} className="border-b-[1.5px] border-slate-200">
                                 <td className="p-2 border-r-[1.5px] border-slate-800 text-center font-bold">{globalIdx + 1}</td>
@@ -467,7 +508,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                             <td className="p-2 border-r-[1.5px] border-slate-800 text-right pr-2 font-black">
                               {isLastPage 
                                 ? previewInvoice.totalQty 
-                                : pageItems.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0)
+                                : pageItems.reduce((sum: number, entry: any) => sum + (Number(entry.item?.quantity || entry.quantity) || 0), 0)
                               }
                             </td>
                             <td className="p-2 border-r-[1.5px] border-slate-800"></td>
@@ -475,7 +516,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                             <td className="p-2 text-right pr-4 font-black">
                               {isLastPage 
                                 ? (previewInvoice.items.reduce((sum: number, s: any) => sum + (Number(s.totalCost) || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })
-                                : (pageItems.reduce((sum: number, s: any) => sum + (Number(s.totalCost) || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })
+                                : (pageItems.reduce((sum: number, entry: any) => sum + (Number(entry.item?.totalCost || entry.totalCost) || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })
                               }
                             </td>
                           </tr>
@@ -684,9 +725,9 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="border-t-[1.5px] border-slate-800 p-8 flex flex-col items-center justify-center bg-slate-50/10 min-h-[300px] flex-1 mt-auto mt-6 print:mt-4">
-                      <p className="text-xs font-black uppercase tracking-widest text-slate-500">Continued on Page {pageIdx + 2}</p>
-                      <p className="text-[10px] mt-1 text-slate-400 font-bold">Refer to the final page for Bank Details, Taxes & Signature</p>
+                    <div className="border-t-[1.5px] border-slate-800 p-3 flex flex-col items-center justify-center bg-slate-50/5 mt-auto">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Continued on Page {pageIdx + 2}</p>
+                      <p className="text-[9px] mt-0.5 text-slate-400 font-bold">Refer to the final page for Bank Details, Taxes & Signature</p>
                     </div>
                   )}
                 </div>
