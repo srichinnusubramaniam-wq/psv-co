@@ -1,10 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
 
 const metaEnv = (import.meta as any).env || {};
-const SUPABASE_URL = metaEnv.VITE_SUPABASE_URL || "https://tvzsircmxoneoghsecyz.supabase.co";
-const SUPABASE_ANON_KEY = metaEnv.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2enNpcmNteG9uZW9naHNlY3l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTAwMzUsImV4cCI6MjA5NzE2NjAzNX0.ehNNz22DWx7WJzn_SH7vyLx_Ji_VimWVqrqLiBEgdUk";
+const DEFAULT_SUPABASE_URL = "https://tvzsircmxoneoghsecyz.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2enNpcmNteG9uZW9naHNlY3l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1OTAwMzUsImV4cCI6MjA5NzE2NjAzNX0.ehNNz22DWx7WJzn_SH7vyLx_Ji_VimWVqrqLiBEgdUk";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SUPABASE_URL = metaEnv.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+const SUPABASE_ANON_KEY = metaEnv.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
+
+// Get custom saved credentials from localStorage if present
+const getSavedCredentials = () => {
+  if (typeof window === 'undefined') return { url: SUPABASE_URL, key: SUPABASE_ANON_KEY };
+  const customUrl = localStorage.getItem('inven_supabase_url');
+  const customKey = localStorage.getItem('inven_supabase_anon_key');
+  return {
+    url: customUrl || SUPABASE_URL,
+    key: customKey || SUPABASE_ANON_KEY
+  };
+};
+
+const creds = getSavedCredentials();
+export const supabase = createClient(creds.url, creds.key);
+
+// Helper to check if real-time cloud sync is toggled ON
+export function isSyncEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('inven_supabase_sync_enabled') !== 'false';
+}
 
 // Track sync status
 export interface SyncStatus {
@@ -63,6 +84,15 @@ export const SYNC_KEYS = [
 
 // Check connection & table existence (checking one representative table like inven_product_master)
 export async function verifySupabaseSetup() {
+  if (!isSyncEnabled()) {
+    updateSyncStatus({
+      connected: false,
+      tableExists: false,
+      error: null,
+      syncing: false
+    });
+    return false;
+  }
   updateSyncStatus({ syncing: true });
   try {
     const { data, error } = await supabase
@@ -112,6 +142,10 @@ export const pushQueues: Record<string, {
 
 // Pull all keys from Supabase and write to localStorage
 export async function pullFromSupabase() {
+  if (!isSyncEnabled()) {
+    updateSyncStatus({ syncing: false });
+    return false;
+  }
   updateSyncStatus({ syncing: true });
   let successCount = 0;
   let errorMessages: string[] = [];
@@ -165,7 +199,7 @@ export async function pullFromSupabase() {
     });
     return true;
   } catch (err: any) {
-    console.error('Error pulling from Supabase:', err);
+    console.warn('Network or sync error pulling from Supabase:', err);
     updateSyncStatus({
       error: err.message || 'Pull failed',
       syncing: false
@@ -176,6 +210,10 @@ export async function pullFromSupabase() {
 
 // Push a single key-value to Supabase
 export async function pushAllToSupabase() {
+  if (!isSyncEnabled()) {
+    updateSyncStatus({ syncing: false });
+    return false;
+  }
   updateSyncStatus({ syncing: true });
   let successCount = 0;
   let errorMessages: string[] = [];
@@ -250,6 +288,7 @@ export async function pushAllToSupabase() {
 }
 
 export async function pushToSupabase(key: string, valueStr: string) {
+  if (!isSyncEnabled()) return;
   if (!key.startsWith('inven_')) return;
   if (!SYNC_KEYS.includes(key)) return;
   if (!valueStr || valueStr === 'undefined' || valueStr === 'null') return;
@@ -302,13 +341,14 @@ export async function pushToSupabase(key: string, valueStr: string) {
             }, { onConflict: 'key' });
 
           if (retryError) {
-            console.error(`Fallback upsert also failed for table ${key}:`, retryError.message);
+            console.warn(`Fallback upsert also failed for table ${key}:`, retryError.message);
             updateSyncStatus({
               error: `Upsert failed for table '${key}': ${retryError.message}`
             });
           }
         } else {
-          console.error(`Upsert failed for table ${key}:`, error.message);
+          // If network failed to fetch, log as warning
+          console.warn(`Upsert failed for table ${key}:`, error.message);
           updateSyncStatus({
             error: `Upsert failed for table '${key}': ${error.message}`
           });
@@ -322,7 +362,7 @@ export async function pushToSupabase(key: string, valueStr: string) {
         });
       }
     } catch (err: any) {
-      console.error('Error pushing key to Supabase:', key, err);
+      console.warn('Error pushing key to Supabase:', key, err);
     }
   };
 
@@ -375,15 +415,20 @@ export function initializeSupabaseSync() {
   // 2. Intercept localStorage.removeItem
   localStorage.removeItem = function (key: string) {
     originalRemoveItem(key);
-    if (key.startsWith('inven_') && SYNC_KEYS.includes(key)) {
+    if (isSyncEnabled() && key.startsWith('inven_') && SYNC_KEYS.includes(key)) {
       supabase.from(key).delete().or(`id.eq.${key},key.eq.${key}`)
         .then(({ error }) => {
-          if (error) console.error('Error removing key from Supabase:', key, error);
+          if (error) console.warn('Error removing key from Supabase:', key, error);
         });
     }
   };
 
   // 3. Start real-time subscription for each sync key/table
+  if (!isSyncEnabled()) {
+    console.log('Supabase real-time cloud sync is currently disabled.');
+    return;
+  }
+
   try {
     SYNC_KEYS.forEach((tableName) => {
       supabase

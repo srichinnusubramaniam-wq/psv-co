@@ -17,13 +17,22 @@ import Income from '@/src/components/Income';
 import CustomerReceipts from '@/src/components/CustomerReceipts';
 import Reports from '@/src/components/Reports';
 import Settings from '@/src/components/Settings';
+import Auth from '@/src/components/Auth';
 import { Plus, X, FileText, Receipt, Factory } from 'lucide-react';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<string | null>(() => {
+    return localStorage.getItem('inven_logged_in_user');
+  });
   const [currentView, setCurrentView] = useState('purchase');
   const [openFormOnView, setOpenFormOnView] = useState<string | null>(null);
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  const handleLogout = () => {
+    localStorage.removeItem('inven_logged_in_user');
+    setCurrentUser(null);
+  };
 
   useEffect(() => {
     const handleSync = () => {
@@ -98,12 +107,16 @@ export default function App() {
     }
   };
 
+  if (!currentUser) {
+    return <Auth onLoginSuccess={(username) => setCurrentUser(username)} />;
+  }
+
   return (
     <div className="min-h-screen flex">
       <Sidebar currentView={currentView} onViewChange={setCurrentView} />
 
       <div className="flex-1 ml-64 min-h-screen flex flex-col relative">
-        <Header onViewChange={setCurrentView} />
+        <Header onViewChange={setCurrentView} currentUser={currentUser} onLogout={handleLogout} />
 
         <main className="flex-1 p-8 space-y-8 max-w-[1600px] overflow-x-hidden" key={reloadKey}>
           {renderView()}

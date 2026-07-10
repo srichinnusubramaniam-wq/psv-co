@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Volume2, VolumeX, AlertTriangle, Clock, Package, Check, Play, Sparkles } from 'lucide-react';
+import { Search, Bell, Volume2, VolumeX, AlertTriangle, Clock, Package, Check, Play, Sparkles, LogOut } from 'lucide-react';
 
 interface ProductionAssignment {
   id: string;
@@ -17,7 +17,15 @@ interface InventoryItem {
   quantity: number;
 }
 
-export default function Header({ onViewChange }: { onViewChange?: (view: string) => void }) {
+export default function Header({ 
+  onViewChange,
+  currentUser,
+  onLogout
+}: { 
+  onViewChange?: (view: string) => void;
+  currentUser?: string | null;
+  onLogout?: () => void;
+}) {
   const [notificationCount, setNotificationCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(() => {
@@ -346,17 +354,28 @@ export default function Header({ onViewChange }: { onViewChange?: (view: string)
 
         <div className="flex items-center gap-3 pl-6 border-l border-slate-200">
           <div className="text-right">
-            <p className="text-sm font-semibold text-slate-800 leading-tight">Admin User</p>
-            <p className="text-xs text-slate-500">Super Admin</p>
+            <p className="text-sm font-bold text-slate-800 leading-tight">
+              {currentUser ? currentUser.charAt(0).toUpperCase() + currentUser.slice(1) : 'Admin User'}
+            </p>
+            <p className="text-xs text-slate-500 font-medium">Super Admin</p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold p-0.5">
             <img 
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" 
+              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser || 'Felix'}`} 
               alt="Avatar" 
               className="w-full h-full rounded-[10px] bg-white"
               referrerPolicy="no-referrer"
             />
           </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer ml-1"
+              title="Sign Out"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
     </header>

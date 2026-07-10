@@ -22,7 +22,8 @@ import {
   ChevronRight,
   Sparkles,
   RefreshCw,
-  FileText
+  FileText,
+  RotateCcw
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { InvoicePreviewOverlay } from './InvoicePreviewOverlay';
@@ -134,10 +135,36 @@ const parseSafeDate = (dateStr: any): Date => {
 };
 
 export default function Billing() {
-  const [activeTab, setActiveTab] = useState<'view_bills' | 'modified_bills' | 'create_bill'>('view_bills');
+  const [activeTab, setActiveTab] = useState<'view_bills' | 'modified_bills' | 'sales_return' | 'create_bill'>('view_bills');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Paid' | 'Unpaid' | 'Partially Paid'>('all');
   
+  // Sales Return states
+  const [salesReturns, setSalesReturns] = useState<any[]>([]);
+  const [srSearchQuery, setSrSearchQuery] = useState('');
+  const [isAddReturnOpen, setIsAddReturnOpen] = useState(false);
+  const [srType, setSrType] = useState<'invoice' | 'direct'>('invoice');
+  const [srInvoiceId, setSrInvoiceId] = useState('');
+  const [srCustomerId, setSrCustomerId] = useState('');
+  const [srModelName, setSrModelName] = useState('');
+  const [srQuantity, setSrQuantity] = useState<string>('');
+  const [srRefundAmount, setSrRefundAmount] = useState<string>('');
+  const [srReason, setSrReason] = useState('Quality Issue');
+  const [srCustomReason, setSrCustomReason] = useState('');
+  const [srDate, setSrDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const resetSalesReturnForm = () => {
+    setSrInvoiceId('');
+    setSrCustomerId('');
+    setSrModelName('');
+    setSrQuantity('');
+    setSrRefundAmount('');
+    setSrReason('Quality Issue');
+    setSrCustomReason('');
+    setSrDate(new Date().toISOString().split('T')[0]);
+    setSrType('invoice');
+  };
+
   // Custom Delete Confirm state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; invoiceNo: string } | null>(null);
@@ -271,6 +298,9 @@ export default function Billing() {
       setProductionAssignments(savedProduction);
       setStyles(savedStyles);
       setGodowns(savedGodowns);
+
+      const savedSalesReturns = JSON.parse(localStorage.getItem('inven_sales_returns') || '[]');
+      setSalesReturns(savedSalesReturns);
 
       // Initialize default values for creator form
       if (!editingInvoiceId) {
@@ -578,6 +608,58 @@ export default function Billing() {
       setProductionAssignments(savedProduction);
     } catch (error) {
       console.error('Error updating stock levels:', error);
+    }
+  };
+
+  // Add returned quantity back to stock (inven_production)
+  const addSalesReturnStock = (modelName: string, quantity: number) => {
+    try {
+      const savedProduction = JSON.parse(localStorage.getItem('inven_production') || '[]');
+      const matches = findMatchingProductionAssignmentsForRestore(modelName, savedProduction);
+      if (matches.length > 0) {
+        // Sort to add back to the first match with available capacity, or simply add back to the first match
+        matches[0].quantity = (Number(matches[0].quantity) || 0) + quantity;
+      } else {
+        // If no match is found, create a new 'Finished Goods' production assignment
+        const newRecord = {
+          id: `FIN-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+          inventoryItemId: '',
+          fabricType: 'Finished Goods',
+          unit: 'Pcs',
+          toGodown: 'UNIT-1',
+          size: 'XL',
+          modelName: modelName,
+          quantity: quantity,
+          rate: 0,
+          assignedAt: new Date().toISOString(),
+          assignedDate: new Date().toISOString().split('T')[0],
+          expectedDate: new Date().toISOString().split('T')[0],
+          status: 'Finished Goods',
+          type: 'Finished Goods'
+        };
+        savedProduction.push(newRecord);
+      }
+      localStorage.setItem('inven_production', JSON.stringify(savedProduction));
+      setProductionAssignments(savedProduction);
+      triggerSync();
+    } catch (e) {
+      console.error('Error adding returned quantity back to stock:', e);
+    }
+  };
+
+  // Subtract returned quantity from stock if return is deleted or reverted
+  const removeSalesReturnStock = (modelName: string, quantity: number) => {
+    try {
+      const savedProduction = JSON.parse(localStorage.getItem('inven_production') || '[]');
+      const matches = findMatchingProductionAssignmentsForRestore(modelName, savedProduction);
+      if (matches.length > 0) {
+        matches[0].quantity = Math.max(0, (Number(matches[0].quantity) || 0) - quantity);
+      }
+      localStorage.setItem('inven_production', JSON.stringify(savedProduction));
+      setProductionAssignments(savedProduction);
+      triggerSync();
+    } catch (e) {
+      console.error('Error removing returned quantity from stock:', e);
     }
   };
 
@@ -925,6 +1007,124 @@ export default function Billing() {
     setIsNonGst(false);
   };
 
+  // Sales Return logic and handlers
+  const saveSalesReturns = (updatedReturns: any[]) => {
+    localStorage.setItem('inven_sales_returns', JSON.stringify(updatedReturns));
+    setSalesReturns(updatedReturns);
+    triggerSync();
+  };
+
+  const filteredSalesReturns = salesReturns.filter(sr => {
+    const query = srSearchQuery.toUpperCase().trim();
+    if (!query) return true;
+    return (
+      (sr.buyerName || '').toUpperCase().includes(query) ||
+      (sr.invoiceNo || '').toUpperCase().includes(query) ||
+      (sr.modelName || '').toUpperCase().includes(query) ||
+      (sr.reason || '').toUpperCase().includes(query)
+    );
+  });
+
+  const handleSaveSalesReturn = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (srType === 'invoice' && !srInvoiceId) {
+      showToast('error', 'Please select an invoice.');
+      return;
+    }
+    if (srType === 'direct' && !srCustomerId) {
+      showToast('error', 'Please select a customer.');
+      return;
+    }
+    if (!srModelName) {
+      showToast('error', 'Please select a product/model description.');
+      return;
+    }
+    
+    const qtyNum = Number(srQuantity);
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      showToast('error', 'Please enter a valid return quantity greater than 0.');
+      return;
+    }
+
+    if (srType === 'invoice') {
+      const selectedInvoice = invoices.find(i => i.id === srInvoiceId);
+      const invoiceItem = selectedInvoice?.items.find(item => item.modelName === srModelName);
+      if (invoiceItem) {
+        const soldQty = Number(invoiceItem.quantity) || 0;
+        const alreadyReturned = salesReturns
+          .filter(r => r.invoiceId === srInvoiceId && r.modelName === srModelName)
+          .reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+        
+        if (qtyNum > (soldQty - alreadyReturned)) {
+          showToast('error', `Cannot return more than sold quantity. Sold: ${soldQty}, Already Returned: ${alreadyReturned}, Attempted: ${qtyNum}`);
+          return;
+        }
+      }
+    }
+
+    const finalReason = srReason === 'Other' ? (srCustomReason || 'Other') : srReason;
+    const finalRefund = Number(srRefundAmount) || 0;
+
+    const newReturn = {
+      id: `SR-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+      type: srType,
+      invoiceId: srType === 'invoice' ? srInvoiceId : '',
+      invoiceNo: srType === 'invoice' ? (invoices.find(i => i.id === srInvoiceId)?.invoiceNo || '') : 'Direct',
+      customerId: srType === 'invoice' ? (invoices.find(i => i.id === srInvoiceId)?.customerId || '') : srCustomerId,
+      buyerName: srType === 'invoice' 
+        ? (invoices.find(i => i.id === srInvoiceId)?.buyer?.name || '') 
+        : (customers.find(c => c.id === srCustomerId)?.name || srCustomerId),
+      modelName: srModelName,
+      quantity: qtyNum,
+      refundAmount: finalRefund,
+      reason: finalReason,
+      returnDate: srDate,
+      createdAt: new Date().toISOString()
+    };
+
+    // Add back to inventory original stock
+    addSalesReturnStock(srModelName, qtyNum);
+
+    const updated = [newReturn, ...salesReturns];
+    saveSalesReturns(updated);
+    
+    showToast('success', `Sales return ${newReturn.id} logged. ${qtyNum} units returned to original stock!`);
+    setIsAddReturnOpen(false);
+    resetSalesReturnForm();
+  };
+
+  const handleDeleteSalesReturn = (retId: string) => {
+    if (window.confirm("Are you sure you want to delete this sales return record? This will subtract the quantity from original stock again.")) {
+      const found = salesReturns.find(r => r.id === retId);
+      if (found) {
+        removeSalesReturnStock(found.modelName, found.quantity);
+        const updated = salesReturns.filter(r => r.id !== retId);
+        saveSalesReturns(updated);
+        showToast('success', `Sales return ${retId} deleted. Stock adjusted accordingly.`);
+      }
+    }
+  };
+
+  // Auto-calculate refund amount based on selected item/product price and quantity
+  useEffect(() => {
+    if (srType === 'invoice' && srInvoiceId && srModelName) {
+      const selectedInvoice = invoices.find(i => i.id === srInvoiceId);
+      const item = selectedInvoice?.items.find(it => it.modelName === srModelName);
+      if (item && srQuantity) {
+        const calculated = Number(srQuantity) * (Number(item.unitPrice) || 0);
+        setSrRefundAmount(calculated.toFixed(2));
+      }
+    } else if (srType === 'direct' && srModelName) {
+      const found = findProductByLabel(srModelName);
+      if (found && srQuantity) {
+        const price = Number(found.sellingPrice || found.price || found.rate || found.basePrice) || 0;
+        const calculated = Number(srQuantity) * price;
+        setSrRefundAmount(calculated.toFixed(2));
+      }
+    }
+  }, [srType, srInvoiceId, srModelName, srQuantity, invoices]);
+
   // Initialize form with existing invoice details for modification
   const handleEditInvoice = (inv: GeneratedInvoice) => {
     setEditingInvoiceId(inv.id);
@@ -1190,7 +1390,18 @@ export default function Billing() {
         </div>
         
         {/* Quick action creator */}
-        {activeTab !== 'create_bill' && (
+        {activeTab === 'sales_return' ? (
+          <button 
+            onClick={() => {
+              resetSalesReturnForm();
+              setIsAddReturnOpen(true);
+            }}
+            className="flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-5 py-3 rounded-2xl font-bold transition-all shadow-lg shadow-rose-100 cursor-pointer self-start md:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            Record Sales Return
+          </button>
+        ) : activeTab !== 'create_bill' && (
           <button 
             onClick={() => {
               resetCreatorForm();
@@ -1230,6 +1441,22 @@ export default function Billing() {
           {modifiedInvoices.length > 0 && (
             <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
               {modifiedInvoices.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('sales_return')}
+          className={cn(
+            "px-6 py-3 text-sm font-black transition-all border-b-2 -mb-[2px] flex items-center gap-2",
+            activeTab === 'sales_return'
+              ? "border-indigo-600 text-indigo-600"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          )}
+        >
+          Sales Return
+          {salesReturns.length > 0 && (
+            <span className="bg-rose-100 text-rose-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {salesReturns.length}
             </span>
           )}
         </button>
@@ -1507,6 +1734,124 @@ export default function Billing() {
                                 <Undo2 className="w-4 h-4" />
                               </button>
                             </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SALES RETURN TAB CONTENT */}
+      {activeTab === 'sales_return' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="bg-rose-50 border border-rose-100 p-5 rounded-3xl flex items-start gap-3.5">
+            <RotateCcw className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-rose-900 font-bold text-sm">Sales Return Management</p>
+              <p className="text-rose-800/80 text-xs mt-0.5">Record customer returns, process credit notes/refunds, and automatically restore the returned item description quantity directly back to your original Finished Goods stock.</p>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search returns by buyer name, invoice number, model description or reason..."
+                value={srSearchQuery}
+                onChange={(e) => setSrSearchQuery(e.target.value)}
+                className="w-full bg-slate-50 border-none rounded-2xl py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-slate-800"
+              />
+            </div>
+            <button
+              onClick={() => {
+                resetSalesReturnForm();
+                setIsAddReturnOpen(true);
+              }}
+              className="flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-5 py-3 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-rose-100 cursor-pointer w-full md:w-auto"
+            >
+              <Plus className="w-4 h-4" />
+              Record Return
+            </button>
+          </div>
+
+          {/* Returns Table */}
+          {filteredSalesReturns.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-100 p-16 text-center shadow-sm">
+              <div className="w-16 h-16 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                <RotateCcw className="w-8 h-8" />
+              </div>
+              <p className="text-slate-800 font-bold text-lg">No Sales Returns Logged</p>
+              <p className="text-slate-400 text-sm mt-1">Record returns against generated invoices or direct customer returns to increase original stock levels automatically.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/70 border-b border-slate-100">
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider">Return Ref / Date</th>
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider">Buyer Name</th>
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider">Invoice Ref</th>
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider">Model Description</th>
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider text-right">Qty Returned</th>
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider text-right">Refund Amount</th>
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider">Reason</th>
+                      <th className="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-wider text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredSalesReturns.map((ret) => {
+                      return (
+                        <tr key={ret.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-4 px-6">
+                            <div className="space-y-0.5">
+                              <p className="font-mono text-xs font-black text-rose-600 uppercase tracking-wide">{ret.id}</p>
+                              <p className="text-xs text-slate-400 font-medium">{ret.returnDate}</p>
+                            </div>
+                          </td>
+                          <td className="py-4 px-6">
+                            <p className="text-sm font-bold text-slate-800">{ret.buyerName}</p>
+                          </td>
+                          <td className="py-4 px-6">
+                            {ret.type === 'invoice' ? (
+                              <span className="font-mono text-xs font-bold text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded">
+                                {ret.invoiceNo}
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded">
+                                Direct Return
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-4 px-6">
+                            <p className="text-xs font-bold text-slate-700 bg-slate-100/70 inline-block px-2.5 py-1 rounded-lg font-mono">
+                              {ret.modelName}
+                            </p>
+                          </td>
+                          <td className="py-4 px-6 text-right font-mono font-black text-emerald-600 text-sm">
+                            +{ret.quantity} Pcs
+                          </td>
+                          <td className="py-4 px-6 text-right font-mono font-bold text-slate-700 text-sm">
+                            ₹{(ret.refundAmount || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-4 px-6 text-xs text-slate-500 font-semibold max-w-xs truncate">
+                            {ret.reason}
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <button 
+                              onClick={() => handleDeleteSalesReturn(ret.id)}
+                              title="Delete Sales Return (Reverts Stock)"
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -2316,6 +2661,289 @@ export default function Billing() {
                 Delete Bill
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* RECORD SALES RETURN MODAL DIALOG */}
+      {isAddReturnOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-100 shadow-2xl overflow-hidden p-6 space-y-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-xs text-rose-500 font-bold uppercase tracking-wider">Stock Restoration Entry</p>
+                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-rose-500" />
+                  Record Sales Return
+                </h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsAddReturnOpen(false);
+                  resetSalesReturnForm();
+                }}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSalesReturn} className="space-y-4 text-left">
+              {/* Return Type Select Tabs */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Return Category</label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-1 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSrType('invoice');
+                      setSrModelName('');
+                      setSrQuantity('');
+                      setSrRefundAmount('');
+                    }}
+                    className={cn(
+                      "py-2 px-3 text-xs font-extrabold rounded-xl transition-all cursor-pointer",
+                      srType === 'invoice' 
+                        ? "bg-white text-slate-800 shadow" 
+                        : "text-slate-500 hover:text-slate-800"
+                    )}
+                  >
+                    Against Bill/Invoice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSrType('direct');
+                      setSrModelName('');
+                      setSrQuantity('');
+                      setSrRefundAmount('');
+                    }}
+                    className={cn(
+                      "py-2 px-3 text-xs font-extrabold rounded-xl transition-all cursor-pointer",
+                      srType === 'direct' 
+                        ? "bg-white text-slate-800 shadow" 
+                        : "text-slate-500 hover:text-slate-800"
+                    )}
+                  >
+                    Direct Return (No Bill)
+                  </button>
+                </div>
+              </div>
+
+              {/* Conditionally Select Invoice or Customer */}
+              {srType === 'invoice' ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Select Generated Bill <span className="text-rose-500">*</span></label>
+                  <select
+                    value={srInvoiceId}
+                    onChange={(e) => {
+                      setSrInvoiceId(e.target.value);
+                      setSrModelName('');
+                      setSrQuantity('');
+                      setSrRefundAmount('');
+                    }}
+                    required
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="">-- Choose Invoice --</option>
+                    {invoices.map(inv => (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.invoiceNo} - {inv.buyer?.name} (₹{inv.totalAmount.toLocaleString('en-IN')} - {inv.date})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Select Customer / Client <span className="text-rose-500">*</span></label>
+                  <select
+                    value={srCustomerId}
+                    onChange={(e) => setSrCustomerId(e.target.value)}
+                    required
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="">-- Choose Customer --</option>
+                    {customers.map(cust => (
+                      <option key={cust.id} value={cust.id}>
+                        {cust.name} {cust.phone ? `(${cust.phone})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Product / Model description selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Returned Product Model (Stock Name) <span className="text-rose-500">*</span></label>
+                {srType === 'invoice' ? (
+                  <select
+                    value={srModelName}
+                    onChange={(e) => {
+                      setSrModelName(e.target.value);
+                      setSrQuantity('');
+                      setSrRefundAmount('');
+                    }}
+                    required
+                    disabled={!srInvoiceId}
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-bold text-slate-700 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">{srInvoiceId ? "-- Select Sold Item --" : "Please select an invoice first"}</option>
+                    {srInvoiceId && invoices.find(i => i.id === srInvoiceId)?.items.map((item, idx) => (
+                      <option key={`${item.id}-${idx}`} value={item.modelName}>
+                        {item.modelName} (Sold Qty: {item.quantity} {item.unit || 'Pcs'} @ ₹{item.unitPrice})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={srModelName}
+                    onChange={(e) => {
+                      setSrModelName(e.target.value);
+                      setSrQuantity('');
+                      setSrRefundAmount('');
+                    }}
+                    required
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="">-- Select Product Model --</option>
+                    {products.map(p => {
+                      const label = p.description ? `${p.description} - ${p.code || p.styleNo || ''}` : (p.name || p.modelName);
+                      return (
+                        <option key={p.id} value={label}>
+                          {label}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </div>
+
+              {/* Informative notice about sold vs returned quantity if invoice selected */}
+              {srType === 'invoice' && srInvoiceId && srModelName && (
+                (() => {
+                  const selectedInvoice = invoices.find(i => i.id === srInvoiceId);
+                  const item = selectedInvoice?.items.find(it => it.modelName === srModelName);
+                  const soldQty = item ? Number(item.quantity) || 0 : 0;
+                  const alreadyReturned = salesReturns
+                    .filter(r => r.invoiceId === srInvoiceId && r.modelName === srModelName)
+                    .reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+                  const maxReturnable = soldQty - alreadyReturned;
+
+                  return (
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 font-semibold space-y-1">
+                      <div className="flex justify-between">
+                        <span>Quantity originally sold:</span>
+                        <span className="font-mono text-slate-800">{soldQty} Pcs</span>
+                      </div>
+                      <div className="flex justify-between text-amber-600">
+                        <span>Already returned in previous logs:</span>
+                        <span className="font-mono">{alreadyReturned} Pcs</span>
+                      </div>
+                      <div className="flex justify-between border-t border-dashed border-slate-200 mt-1 pt-1 text-emerald-600 font-bold">
+                        <span>Maximum returnable now:</span>
+                        <span className="font-mono text-emerald-700">{maxReturnable} Pcs</span>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+
+              {/* Quantity and Refund amount side by side */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Return Quantity <span className="text-rose-500">*</span></label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={srQuantity}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSrQuantity(val);
+                    }}
+                    placeholder="Enter Qty"
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-black text-slate-800 outline-none font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Credit / Refund Amount (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={srRefundAmount}
+                    onChange={(e) => setSrRefundAmount(e.target.value)}
+                    placeholder="Auto or Manual"
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-bold text-slate-700 outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Return Date & Reason side by side */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Return Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={srDate}
+                    onChange={(e) => setSrDate(e.target.value)}
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-bold text-slate-700 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Reason for Return</label>
+                  <select
+                    value={srReason}
+                    onChange={(e) => setSrReason(e.target.value)}
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="Quality Issue">Quality Issue</option>
+                    <option value="Defective Stock">Defective Stock</option>
+                    <option value="Incorrect Model">Incorrect Model</option>
+                    <option value="Excess Ordered">Excess Ordered</option>
+                    <option value="Other">Other (Custom Reason)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Custom reason input if "Other" is chosen */}
+              {srReason === 'Other' && (
+                <div className="animate-in fade-in duration-200">
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Specify Custom Reason</label>
+                  <input
+                    type="text"
+                    required
+                    value={srCustomReason}
+                    onChange={(e) => setSrCustomReason(e.target.value)}
+                    placeholder="Describe return reason..."
+                    className="w-full bg-slate-50 border-none rounded-xl px-3.5 py-3 text-sm font-medium text-slate-700 outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Footer actions */}
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddReturnOpen(false);
+                    resetSalesReturnForm();
+                  }}
+                  className="px-4.5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-lg shadow-rose-100 cursor-pointer"
+                >
+                  Confirm Return & Restore Stock
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -36,6 +36,16 @@ export default function Settings() {
   const [copied, setCopied] = useState(false);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
+  const [syncEnabled, setSyncEnabled] = useState(() => {
+    return localStorage.getItem('inven_supabase_sync_enabled') !== 'false';
+  });
+  const [customSupabaseUrl, setCustomSupabaseUrl] = useState(() => {
+    return localStorage.getItem('inven_supabase_url') || '';
+  });
+  const [customSupabaseAnonKey, setCustomSupabaseAnonKey] = useState(() => {
+    return localStorage.getItem('inven_supabase_anon_key') || '';
+  });
+
   useEffect(() => {
     const unsubscribe = subscribeToSyncStatus((status) => {
       setSyncState(status);
@@ -77,6 +87,7 @@ export default function Settings() {
     const sql = `-- Dynamic Table Creation queries for all inventory management models
 -- You can run these in your Supabase SQL editor to ensure all tables are created.
 
+create table if not exists inven_users (username text primary key, password text not null, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
 create table if not exists inven_customers (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
 create table if not exists inven_expense_master (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
 create table if not exists inven_expense_records (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
@@ -94,6 +105,7 @@ create table if not exists inven_transports (id text primary key, value jsonb, u
 create table if not exists inven_unit_master (id text primary key, value jsonb, updated_at timestamp with time zone default timezone('utc'::text, now()) not null);
 
 -- Disable Row Level Security (RLS) so that public clients can write to these tables:
+alter table inven_users disable row level security;
 alter table inven_customers disable row level security;
 alter table inven_expense_master disable row level security;
 alter table inven_expense_records disable row level security;
@@ -111,6 +123,7 @@ alter table inven_transports disable row level security;
 alter table inven_unit_master disable row level security;
 
 -- Enable replica identity full for real-time updates:
+alter table inven_users replica identity full;
 alter table inven_customers replica identity full;
 alter table inven_expense_master replica identity full;
 alter table inven_expense_records replica identity full;
@@ -128,7 +141,7 @@ alter table inven_transports replica identity full;
 alter table inven_unit_master replica identity full;
 
 -- Enable realtime updates publication:
-alter publication supabase_realtime add table inven_customers, inven_expense_master, inven_expense_records, inven_generated_invoices, inven_income_master, inven_income_records, inven_inventory, inven_product_master, inven_production, inven_sales, inven_settings, inven_style_master, inven_suppliers, inven_transports, inven_unit_master;`;
+alter publication supabase_realtime add table inven_users, inven_customers, inven_expense_master, inven_expense_records, inven_generated_invoices, inven_income_master, inven_income_records, inven_inventory, inven_product_master, inven_production, inven_sales, inven_settings, inven_style_master, inven_suppliers, inven_transports, inven_unit_master;`;
     navigator.clipboard.writeText(sql);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -184,6 +197,19 @@ alter publication supabase_realtime add table inven_customers, inven_expense_mas
       lowStockThreshold
     };
     localStorage.setItem('inven_settings', JSON.stringify(settings));
+    
+    // Save Supabase Sync parameters
+    localStorage.setItem('inven_supabase_sync_enabled', syncEnabled ? 'true' : 'false');
+    if (customSupabaseUrl.trim()) {
+      localStorage.setItem('inven_supabase_url', customSupabaseUrl.trim());
+    } else {
+      localStorage.removeItem('inven_supabase_url');
+    }
+    if (customSupabaseAnonKey.trim()) {
+      localStorage.setItem('inven_supabase_anon_key', customSupabaseAnonKey.trim());
+    } else {
+      localStorage.removeItem('inven_supabase_anon_key');
+    }
     
     // Trigger cross-view synchronization load updates
     window.dispatchEvent(new Event('inven_localstorage_sync'));
@@ -458,7 +484,7 @@ alter publication supabase_realtime add table inven_customers, inven_expense_mas
 
           {/* Supabase Sync Settings Card */}
           <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-50 gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
                   <Database className="w-5 h-5" />
@@ -472,34 +498,95 @@ alter publication supabase_realtime add table inven_customers, inven_expense_mas
               {/* Status Badge */}
               <div className="flex items-center gap-2">
                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                  syncState.connected && syncState.tableExists
+                  !syncEnabled
+                    ? 'bg-slate-50 text-slate-500 border-slate-100'
+                    : syncState.connected && syncState.tableExists
                     ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
                     : syncState.connected 
                     ? 'bg-amber-50 text-amber-600 border-amber-100'
                     : 'bg-rose-50 text-rose-600 border-rose-100'
                 }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${
-                    syncState.connected && syncState.tableExists ? 'bg-emerald-500 animate-pulse' : syncState.connected ? 'bg-amber-500' : 'bg-rose-500'
+                    !syncEnabled ? 'bg-slate-400' : syncState.connected && syncState.tableExists ? 'bg-emerald-500 animate-pulse' : syncState.connected ? 'bg-amber-500' : 'bg-rose-500'
                   }`} />
-                  {syncState.connected && syncState.tableExists ? 'Active Sync' : syncState.connected ? 'Connected' : 'Disconnected'}
+                  {!syncEnabled ? 'Offline Mode' : syncState.connected && syncState.tableExists ? 'Active Sync' : syncState.connected ? 'Connected' : 'Disconnected'}
                 </span>
               </div>
             </div>
 
-            {/* Sync Info / Status Messages */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Connection Endpoint</span>
-                <span className="font-mono font-bold text-slate-700 truncate block">https://tvzsircmxoneoghsecyz.supabase.co</span>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Last Cloud Sync</span>
-                <span className="font-bold text-slate-700 block">
-                  {syncState.lastSyncedAt 
-                    ? syncState.lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                    : 'No sync completed yet'
+            {/* Sync Toggle Switch */}
+            <div className="flex items-center justify-between p-4 bg-emerald-50/40 rounded-2xl border border-emerald-50">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-slate-800 block">Automatic Cloud Synchronization</span>
+                <span className="text-[11px] text-slate-500 block">
+                  {syncEnabled 
+                    ? 'All local data updates are automatically pushed and synchronized with your Supabase database in real-time.' 
+                    : 'Sync is suspended. App is running in Local Offline-Only mode safely.'
                   }
                 </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={syncEnabled} 
+                  onChange={(e) => setSyncEnabled(e.target.checked)} 
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+
+            {/* Sync Info / Custom Credentials Input Fields */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Connection Endpoint</span>
+                  <span className="font-mono font-bold text-slate-700 truncate block">
+                    {customSupabaseUrl || 'https://tvzsircmxoneoghsecyz.supabase.co'}
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Last Cloud Sync</span>
+                  <span className="font-bold text-slate-700 block">
+                    {syncState.lastSyncedAt 
+                      ? syncState.lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                      : 'No sync completed yet'
+                    }
+                  </span>
+                </div>
+              </div>
+
+              {/* Custom Database Config (Expandable or always visible) */}
+              <div className="space-y-3 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Use Your Own Custom Supabase Instance</span>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Custom Supabase URL</label>
+                    <input 
+                      type="text"
+                      placeholder="https://your-project-id.supabase.co"
+                      value={customSupabaseUrl}
+                      onChange={(e) => setCustomSupabaseUrl(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Custom Anon Key</label>
+                    <input 
+                      type="password"
+                      placeholder="eyJhbGciOiJIUzI1NiIsIn..."
+                      value={customSupabaseAnonKey}
+                      onChange={(e) => setCustomSupabaseAnonKey(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                    />
+                  </div>
+                </div>
+                
+                <p className="text-[10px] text-slate-400 leading-normal">
+                  * Leave these blank to use the default database. Note: Changing credentials or toggling sync state requires clicking the general <strong>Save Settings</strong> button at the top right of this section to apply, followed by a page refresh.
+                </p>
               </div>
             </div>
 
