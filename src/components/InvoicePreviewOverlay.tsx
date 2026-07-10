@@ -458,18 +458,6 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                             );
                           })}
                           
-                          {/* Filler empty rows to give natural document space */}
-                          {Array.from({ length: ITEMS_PER_PAGE - pageItems.length }).map((_, i) => (
-                            <tr key={`filler-${i}`} className="border-b-[0.5px] border-slate-100">
-                              <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
-                              <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
-                              <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
-                              <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
-                              <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
-                              <td className="p-2 border-r-[1.5px] border-slate-800 h-8"></td>
-                              <td className="p-2 h-8"></td>
-                            </tr>
-                          ))}
                         </tbody>
                         <tfoot>
                           <tr className="bg-[#fcf8ef] text-slate-900 font-black text-center border-t-[1.5px] border-b-[1.5px] border-slate-800 uppercase">
@@ -498,9 +486,9 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
 
                   {/* Bottom content */}
                   {isLastPage ? (
-                    <div className="flex flex-col mt-auto">
+                    <div className="flex flex-col mt-auto mt-6 print:mt-4">
                       {/* Final Section: Calculations and Bank Details */}
-                      <div className="grid grid-cols-[1.2fr_1fr] border-b-[1.5px] border-slate-800 bg-white">
+                      <div className="grid grid-cols-[1.2fr_1fr] border-t-[1.5px] border-b-[1.5px] border-slate-800 bg-white">
                         {/* Left Bottom Section: Bank Details */}
                         <div className="border-r-[1.5px] border-slate-800 flex flex-col justify-between">
                           <div className="p-3 text-[11px] font-bold space-y-1 bg-white">
@@ -696,7 +684,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="border-t-[1.5px] border-slate-800 p-8 flex flex-col items-center justify-center bg-slate-50/10 min-h-[300px] flex-1 mt-auto">
+                    <div className="border-t-[1.5px] border-slate-800 p-8 flex flex-col items-center justify-center bg-slate-50/10 min-h-[300px] flex-1 mt-auto mt-6 print:mt-4">
                       <p className="text-xs font-black uppercase tracking-widest text-slate-500">Continued on Page {pageIdx + 2}</p>
                       <p className="text-[10px] mt-1 text-slate-400 font-bold">Refer to the final page for Bank Details, Taxes & Signature</p>
                     </div>
