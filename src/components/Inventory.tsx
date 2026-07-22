@@ -53,7 +53,7 @@ export interface InventoryItem {
   creditDays?: number;
   dueDate?: string;
   totalCost?: number;
-  rawMaterialType?: 'yarn' | 'cloth' | 'jari';
+  rawMaterialType?: 'yarn' | 'cloth' | 'jari' | 'sizing_kully' | 'processing_kully';
   amount?: number;
   cgst?: number;
   sgst?: number;
@@ -64,6 +64,7 @@ export interface InventoryItem {
   netAmount?: number;
   productGroupName?: string;
   gstType?: 'GST' | 'NON-GST';
+  godown?: string;
   isReturned?: boolean;
   returnedQuantity?: number;
   returnDate?: string;
@@ -93,6 +94,15 @@ export default function Inventory() {
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
   const [selectedSupplierDetails, setSelectedSupplierDetails] = useState<Supplier | null>(null);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+  const [godowns, setGodowns] = useState<{ id: string; name: string }[]>([]);
+  const [clothRows, setClothRows] = useState<{
+    fabricType: string;
+    productGroupName: string;
+    quantity: number;
+    pricePerMeter: number;
+    amount: number;
+    godown: string;
+  }[]>([]);
 
   const handleInventoryExcelExport = () => {
     const headers = [
@@ -188,6 +198,44 @@ export default function Inventory() {
       igstPercent: targetFormData.igstPercent !== undefined ? targetFormData.igstPercent : defaults.igstPercent,
       isInterstate: defaults.isInterstate,
       locationType: defaults.locationType
+    };
+  };
+
+  const syncClothCalculations = (
+    rows: typeof clothRows,
+    currentFormData: Partial<InventoryItem>
+  ) => {
+    const taxableSubtotal = parseFloat(rows.reduce((sum, r) => sum + (parseFloat(String(r.amount)) || 0), 0).toFixed(2));
+    const isGST = (currentFormData.gstType || 'GST') === 'GST';
+    
+    let calculatedCGST = 0;
+    let calculatedSGST = 0;
+    let calculatedIGST = 0;
+
+    if (isGST) {
+      const percents = getActiveGSTPercents(currentFormData);
+      if (percents.isInterstate) {
+        calculatedIGST = parseFloat(((taxableSubtotal * percents.igstPercent) / 100).toFixed(2));
+      } else {
+        calculatedCGST = parseFloat(((taxableSubtotal * percents.cgstPercent) / 100).toFixed(2));
+        calculatedSGST = parseFloat(((taxableSubtotal * percents.sgstPercent) / 100).toFixed(2));
+      }
+    }
+
+    const calculatedTotalCost = parseFloat((taxableSubtotal + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
+    
+    const totalQty = rows.reduce((sum, r) => sum + (parseFloat(String(r.quantity)) || 0), 0);
+    const calculatedPricePerMeter = totalQty > 0 ? parseFloat((calculatedTotalCost / totalQty).toFixed(3)) : 0;
+
+    return {
+      ...currentFormData,
+      amount: taxableSubtotal,
+      cgst: calculatedCGST,
+      sgst: calculatedSGST,
+      igst: calculatedIGST,
+      totalCost: calculatedTotalCost,
+      quantity: totalQty,
+      pricePerMeter: calculatedPricePerMeter
     };
   };
 
@@ -370,6 +418,18 @@ export default function Inventory() {
         }
       } catch (e) { console.error(e); }
     }
+
+    // Load Godowns
+    let savedGodowns = JSON.parse(localStorage.getItem('inven_unit_master') || '[]');
+    if (!savedGodowns || savedGodowns.length === 0) {
+      savedGodowns = [
+        { id: 'U-001', name: 'UNIT-1' },
+        { id: 'U-002', name: 'UNIT-2' },
+        { id: 'U-003', name: 'UNIT-3' }
+      ];
+      localStorage.setItem('inven_unit_master', JSON.stringify(savedGodowns));
+    }
+    setGodowns(savedGodowns);
   }, []);
 
   useEffect(() => {
@@ -381,9 +441,19 @@ export default function Inventory() {
           fabricType: products[0].description,
           productGroupName: products[0].productGroupName
         }));
+        setClothRows([
+          {
+            fabricType: products[0].description,
+            productGroupName: products[0].productGroupName || 'COLOUR BASANA',
+            quantity: 0,
+            pricePerMeter: 0,
+            amount: 0,
+            godown: godowns[0]?.name || 'UNIT-1'
+          }
+        ]);
       }
     }
-  }, [products, editingId]);
+  }, [products, editingId, godowns]);
 
   const saveToLocal = (data: InventoryItem[]) => {
     setItems(data);
@@ -513,8 +583,18 @@ export default function Inventory() {
 
     const isYarn = formData.rawMaterialType === 'yarn';
     const isJari = formData.rawMaterialType === 'jari';
-    const finalFabricType = isYarn ? 'Yarn' : (isJari ? (formData.fabricType || 'Jari') : (formData.fabricType || 'Cotton'));
-    const finalUnit = (isYarn || isJari) ? 'KGs' : (formData.unit || 'Meters');
+    const isSizingKully = formData.rawMaterialType === 'sizing_kully';
+    const isProcessingKully = formData.rawMaterialType === 'processing_kully';
+    const finalFabricType = isYarn 
+      ? 'Yarn' 
+      : (isJari 
+        ? (formData.fabricType || 'Jari') 
+        : (isSizingKully 
+          ? (formData.fabricType || 'Sizing Kully') 
+          : (isProcessingKully 
+            ? (formData.fabricType || 'Processing Kully') 
+            : (formData.fabricType || 'Cotton'))));
+    const finalUnit = (isYarn || isJari || isSizingKully || isProcessingKully) ? 'KGs' : (formData.unit || 'Meters');
     const finalQty = formData.quantity || 0;
 
     const grossTotal = formData.amount !== undefined
@@ -538,14 +618,25 @@ export default function Inventory() {
       : (formData.pricePerMeter || 0);
 
     if (editingId) {
+      let updatedData: Partial<InventoryItem> = { ...formData };
+      if (formData.rawMaterialType === 'cloth' && clothRows.length > 0) {
+        const row = clothRows[0];
+        updatedData = {
+          ...formData,
+          fabricType: row.fabricType,
+          productGroupName: row.productGroupName,
+          quantity: row.quantity,
+          pricePerMeter: row.quantity > 0 ? parseFloat((grossTotal / row.quantity).toFixed(3)) : row.pricePerMeter,
+          amount: row.amount,
+          godown: row.godown
+        };
+      }
+
       const updated = items.map(item => 
         item.id === editingId ? { 
           ...item, 
-          ...formData as InventoryItem, 
-          fabricType: finalFabricType,
+          ...updatedData as InventoryItem, 
           unit: finalUnit,
-          quantity: finalQty,
-          pricePerMeter: calculatedPricePerMeter,
           totalCost: grossTotal,
           supplierName,
           paymentStatus: status,
@@ -570,22 +661,7 @@ export default function Inventory() {
         }
       }
 
-      const formattedId = `${prefix}-${currentNextId.toString().padStart(3, '0')}`;
-
-      const newItem: InventoryItem = {
-        fabricType: finalFabricType,
-        ...formData as InventoryItem,
-        unit: finalUnit,
-        quantity: finalQty,
-        pricePerMeter: calculatedPricePerMeter,
-        totalCost: grossTotal,
-        id: formattedId,
-        supplierName,
-        createdAt: new Date().toISOString(),
-        paymentStatus: status,
-        paidAmount: initialPaid,
-        dueDate: calculatedDueDate
-      };
+      const baseId = `${prefix}-${currentNextId.toString().padStart(3, '0')}`;
 
       // Increment and update next purchase id in localstorage
       const updatedSettings = {
@@ -595,18 +671,114 @@ export default function Inventory() {
       localStorage.setItem('inven_settings', JSON.stringify(updatedSettings));
       window.dispatchEvent(new Event('inven_localstorage_sync'));
 
-      if (initialPaid > 0) {
+      let savedNewItems: InventoryItem[] = [];
+
+      if (formData.rawMaterialType === 'cloth') {
+        const overallPaidAmount = Number(formData.paidAmount) || 0;
+        const overallTotalCost = (formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0) + (formData.igst || 0);
+
+        let distributedPaidSoFar = 0;
+        const newLots: InventoryItem[] = clothRows.map((row, idx) => {
+          const isGST = (formData.gstType || 'GST') === 'GST';
+          const { cgstPercent, sgstPercent, igstPercent } = isGST ? getActiveGSTPercents(formData) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0 };
+          
+          const rowAmount = parseFloat(row.amount.toFixed(2));
+          let rowCgst = 0;
+          let rowSgst = 0;
+          let rowIgst = 0;
+
+          if (isGST) {
+            const percents = getActiveGSTPercents(formData);
+            if (percents.isInterstate) {
+              rowIgst = parseFloat(((rowAmount * igstPercent) / 100).toFixed(2));
+            } else {
+              rowCgst = parseFloat(((rowAmount * cgstPercent) / 100).toFixed(2));
+              rowSgst = parseFloat(((rowAmount * sgstPercent) / 100).toFixed(2));
+            }
+          }
+
+          const rowTotalCost = parseFloat((rowAmount + rowCgst + rowSgst + rowIgst).toFixed(2));
+          
+          let rowPaidAmount = 0;
+          if (idx === clothRows.length - 1) {
+            rowPaidAmount = parseFloat((overallPaidAmount - distributedPaidSoFar).toFixed(2));
+          } else {
+            rowPaidAmount = parseFloat(((rowTotalCost / Math.max(1, overallTotalCost)) * overallPaidAmount).toFixed(2));
+            distributedPaidSoFar += rowPaidAmount;
+          }
+
+          let rowStatus: 'Unpaid' | 'Partially Paid' | 'Paid' = 'Unpaid';
+          if (rowPaidAmount >= rowTotalCost) {
+            rowStatus = 'Paid';
+          } else if (rowPaidAmount > 0) {
+            rowStatus = 'Partially Paid';
+          }
+
+          const rowId = clothRows.length > 1 ? `${baseId}-${String.fromCharCode(65 + idx)}` : baseId;
+
+          return {
+            id: rowId,
+            supplierId: formData.supplierId!,
+            supplierName,
+            fabricType: row.fabricType,
+            productGroupName: row.productGroupName,
+            quantity: row.quantity,
+            pricePerMeter: row.quantity > 0 ? parseFloat((rowTotalCost / row.quantity).toFixed(3)) : row.pricePerMeter,
+            unit: 'Meters' as const,
+            entryDate: entryDateVal,
+            createdAt: new Date().toISOString(),
+            paymentStatus: rowStatus,
+            paidAmount: rowPaidAmount,
+            paymentType: formData.paymentType || 'Cash',
+            creditDays: formData.creditDays || 0,
+            dueDate: calculatedDueDate,
+            totalCost: rowTotalCost,
+            rawMaterialType: 'cloth' as const,
+            amount: rowAmount,
+            cgst: rowCgst,
+            sgst: rowSgst,
+            igst: rowIgst,
+            cgstPercent,
+            sgstPercent,
+            igstPercent,
+            gstType: formData.gstType || 'GST',
+            godown: row.godown
+          };
+        });
+
+        savedNewItems = newLots;
+      } else {
+        const newItem: InventoryItem = {
+          fabricType: finalFabricType,
+          ...formData as InventoryItem,
+          unit: finalUnit,
+          quantity: finalQty,
+          pricePerMeter: calculatedPricePerMeter,
+          totalCost: grossTotal,
+          id: baseId,
+          supplierName,
+          createdAt: new Date().toISOString(),
+          paymentStatus: status,
+          paidAmount: initialPaid,
+          dueDate: calculatedDueDate
+        };
+
+        savedNewItems = [newItem];
+      }
+
+      const initialPaidTotal = Number(formData.paidAmount) || 0;
+      if (initialPaidTotal > 0) {
         recordExpenseEntry(
-          newItem.id, 
-          newItem.supplierName, 
-          initialPaid, 
-          newItem.entryDate || new Date().toISOString().split('T')[0], 
+          savedNewItems[0].id, 
+          supplierName, 
+          initialPaidTotal, 
+          entryDateVal, 
           'Cash', 
-          'Initial payment for raw materials lot'
+          `Initial payment for raw materials lot${savedNewItems.length > 1 ? 's' : ''}`
         );
       }
 
-      saveToLocal([newItem, ...items]);
+      saveToLocal([...savedNewItems, ...items]);
     }
 
     setIsFormOpen(false);
@@ -616,8 +788,8 @@ export default function Inventory() {
   const resetForm = () => {
     setEditingId(null);
     setFormData({ 
-      fabricType: '', 
-      productGroupName: '',
+      fabricType: products[0]?.description || '', 
+      productGroupName: products[0]?.productGroupName || 'COLOUR BASANA',
       unit: 'Meters',
       entryDate: new Date().toISOString().split('T')[0],
       paidAmount: 0,
@@ -631,6 +803,16 @@ export default function Inventory() {
       sgstPercent: undefined,
       igstPercent: undefined
     });
+    setClothRows([
+      {
+        fabricType: products[0]?.description || '',
+        productGroupName: products[0]?.productGroupName || 'COLOUR BASANA',
+        quantity: 0,
+        pricePerMeter: 0,
+        amount: 0,
+        godown: godowns[0]?.name || 'UNIT-1'
+      }
+    ]);
   };
 
   const deleteItem = (id: string) => {
@@ -982,7 +1164,7 @@ export default function Inventory() {
                               {item.id}
                             </button>
                             <p className="text-xs font-bold text-indigo-600 flex items-center gap-1.5 flex-wrap">
-                              <span className="capitalize">{item.rawMaterialType || 'cloth'}</span>
+                              <span className="capitalize">{(item.rawMaterialType || 'cloth').replace(/_/g, ' ')}</span>
                               {item.fabricType && item.fabricType.toLowerCase() !== (item.rawMaterialType || 'cloth').toLowerCase() && (
                                 <span className="text-slate-500 font-semibold text-[11px]">({item.fabricType})</span>
                               )}
@@ -1064,29 +1246,18 @@ export default function Inventory() {
                               <RotateCcw className="w-4 h-4" />
                             </button>
                           )}
-                          <button 
-                            onClick={() => openPaymentDialog(item)}
-                            className={cn(
-                              "p-2 rounded-lg transition-all",
-                              item.paymentStatus === 'Paid' 
-                                ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100" 
-                                : item.paymentStatus === 'Partially Paid'
-                                ? "text-blue-600 bg-blue-50 hover:bg-blue-100 animate-pulse"
-                                : "text-amber-600 bg-amber-50 hover:bg-amber-100"
-                            )}
-                            title="Record Supplier Payment"
-                          >
-                            <Coins className="w-4 h-4" />
-                          </button>
+
                           <button 
                             onClick={() => { 
                               setEditingId(item.id); 
                               const isYarnItem = item.rawMaterialType === 'yarn' || item.fabricType === 'Yarn';
                               const isJariItem = item.rawMaterialType === 'jari' || item.fabricType === 'Jari';
+                              const isSizingKullyItem = item.rawMaterialType === 'sizing_kully' || item.fabricType === 'Sizing Kully';
+                              const isProcessingKullyItem = item.rawMaterialType === 'processing_kully' || item.fabricType === 'Processing Kully';
                               const totalVal = item.totalCost !== undefined ? item.totalCost : (item.pricePerMeter || 0) * (item.quantity || 0);
                               setFormData({
                                 ...item,
-                                rawMaterialType: isYarnItem ? 'yarn' : (isJariItem ? 'jari' : 'cloth'),
+                                rawMaterialType: isYarnItem ? 'yarn' : (isJariItem ? 'jari' : (isSizingKullyItem ? 'sizing_kully' : (isProcessingKullyItem ? 'processing_kully' : 'cloth'))),
                                 amount: item.amount || totalVal - (item.cgst || 0) - (item.sgst || 0) - (item.igst || 0),
                                 cgst: item.cgst || 0,
                                 sgst: item.sgst || 0,
@@ -1161,7 +1332,7 @@ export default function Inventory() {
 
       {isFormOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-7xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">{editingId ? 'Edit Purchase' : 'Add Raw Materials'}</h3>
@@ -1175,7 +1346,7 @@ export default function Inventory() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
+            <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[85vh] overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-8">
                 {/* Supplier Selection */}
                 <div className="space-y-2 col-span-full">
@@ -1240,10 +1411,10 @@ export default function Inventory() {
                 {/* Raw Material Type Choice (Radio Buttons) */}
                 <div className="space-y-2 col-span-full">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Raw Material Type</label>
-                  <div className="flex gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <label
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border font-bold text-sm shadow-sm",
+                        "flex items-center justify-center gap-2 rounded-2xl py-4 px-3 cursor-pointer transition-all border font-bold text-sm shadow-sm",
                         (formData.rawMaterialType || 'cloth') === 'cloth'
                           ? "bg-[#0b1329] text-white border-[#0b1329]" 
                           : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-slate-200"
@@ -1280,7 +1451,7 @@ export default function Inventory() {
                     </label>
                     <label
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border font-bold text-sm shadow-sm",
+                        "flex items-center justify-center gap-2 rounded-2xl py-4 px-3 cursor-pointer transition-all border font-bold text-sm shadow-sm",
                         formData.rawMaterialType === 'yarn'
                           ? "bg-[#0b1329] text-white border-[#0b1329]" 
                           : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-slate-200"
@@ -1330,7 +1501,7 @@ export default function Inventory() {
                     </label>
                     <label
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-2 rounded-2xl py-4 px-5 cursor-pointer transition-all border font-bold text-sm shadow-sm",
+                        "flex items-center justify-center gap-2 rounded-2xl py-4 px-3 cursor-pointer transition-all border font-bold text-sm shadow-sm",
                         formData.rawMaterialType === 'jari'
                           ? "bg-[#0b1329] text-white border-[#0b1329]" 
                           : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-slate-200"
@@ -1382,10 +1553,118 @@ export default function Inventory() {
                       </span>
                       Jari
                     </label>
+                    <label
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-2xl py-4 px-3 cursor-pointer transition-all border font-bold text-sm shadow-sm whitespace-nowrap",
+                        formData.rawMaterialType === 'sizing_kully'
+                          ? "bg-[#0b1329] text-white border-[#0b1329]" 
+                          : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-slate-200"
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="rawMaterialType"
+                        value="sizing_kully"
+                        checked={formData.rawMaterialType === 'sizing_kully'}
+                        onChange={() => {
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getActiveGSTPercents(formData);
+                          const amt = formData.amount || 0;
+                          let calculatedCGST = 0;
+                          let calculatedSGST = 0;
+                          let calculatedIGST = 0;
+                          if (isInterstate) {
+                            calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                          } else {
+                            calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                            calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                          }
+                          const isYarn = formData.rawMaterialType === 'yarn';
+                          const needDefault = isYarn || !formData.fabricType;
+                          setFormData({ 
+                            ...formData, 
+                            rawMaterialType: 'sizing_kully',
+                            fabricType: needDefault ? '' : formData.fabricType,
+                            productGroupName: needDefault ? '' : formData.productGroupName,
+                            cgst: calculatedCGST,
+                            sgst: calculatedSGST,
+                            igst: calculatedIGST,
+                            cgstPercent,
+                            sgstPercent,
+                            igstPercent
+                          });
+                        }}
+                        className="sr-only"
+                      />
+                      <span className={cn(
+                        "w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mr-1",
+                        formData.rawMaterialType === 'sizing_kully'
+                          ? "border-white"
+                          : "border-slate-400"
+                      )}>
+                        {formData.rawMaterialType === 'sizing_kully' && (
+                          <span className="w-2 h-2 rounded-full bg-white" />
+                        )}
+                      </span>
+                      Sizing Kully
+                    </label>
+                    <label
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-2xl py-4 px-3 cursor-pointer transition-all border font-bold text-sm shadow-sm whitespace-nowrap",
+                        formData.rawMaterialType === 'processing_kully'
+                          ? "bg-[#0b1329] text-white border-[#0b1329]" 
+                          : "bg-[#f8faff] hover:bg-slate-100 text-slate-700 border-slate-200"
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="rawMaterialType"
+                        value="processing_kully"
+                        checked={formData.rawMaterialType === 'processing_kully'}
+                        onChange={() => {
+                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getActiveGSTPercents(formData);
+                          const amt = formData.amount || 0;
+                          let calculatedCGST = 0;
+                          let calculatedSGST = 0;
+                          let calculatedIGST = 0;
+                          if (isInterstate) {
+                            calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
+                          } else {
+                            calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
+                            calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
+                          }
+                          const isYarn = formData.rawMaterialType === 'yarn';
+                          const needDefault = isYarn || !formData.fabricType;
+                          setFormData({ 
+                            ...formData, 
+                            rawMaterialType: 'processing_kully',
+                            fabricType: needDefault ? '' : formData.fabricType,
+                            productGroupName: needDefault ? '' : formData.productGroupName,
+                            cgst: calculatedCGST,
+                            sgst: calculatedSGST,
+                            igst: calculatedIGST,
+                            cgstPercent,
+                            sgstPercent,
+                            igstPercent
+                          });
+                        }}
+                        className="sr-only"
+                      />
+                      <span className={cn(
+                        "w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mr-1",
+                        formData.rawMaterialType === 'processing_kully'
+                          ? "border-white"
+                          : "border-slate-400"
+                      )}>
+                        {formData.rawMaterialType === 'processing_kully' && (
+                          <span className="w-2 h-2 rounded-full bg-white" />
+                        )}
+                      </span>
+                      Processing Kully
+                    </label>
                   </div>
                 </div>
 
-                {formData.rawMaterialType === 'yarn' || formData.rawMaterialType === 'jari' ? (
+                {formData.rawMaterialType !== 'cloth' ? (
                   <>
                     {/* YARN/JARI SPECIFIC FIELDS */}
                     <div className="space-y-2 animate-in fade-in duration-200">
@@ -1445,58 +1724,6 @@ export default function Inventory() {
                         </label>
                       </div>
                     </div>
-
-                    {formData.rawMaterialType === 'jari' && (
-                      <>
-                        <div className="space-y-2 animate-in fade-in duration-200">
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Description</label>
-                          <select 
-                            required
-                            className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                            value={formData.fabricType || ''}
-                            onChange={(e) => {
-                              const desc = e.target.value;
-                              const matchedProduct = products.find(p => p.description === desc);
-                              const groupName = matchedProduct?.productGroupName || formData.productGroupName || 'COLOUR BASANA';
-                              
-                              setFormData({
-                                ...formData,
-                                fabricType: desc,
-                                productGroupName: groupName
-                              });
-                            }}
-                          >
-                            <option value="" disabled>Select Product Description</option>
-                            {products.map(p => p && p.description && (
-                              <option key={p.id || p.name} value={p.description}>
-                                {p.description}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-2 animate-in fade-in duration-200">
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Group Name</label>
-                          <select 
-                            required
-                            className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                            value={formData.productGroupName || ''}
-                            onChange={(e) => setFormData({ ...formData, productGroupName: e.target.value })}
-                          >
-                            <option value="" disabled>Select Product Group Name</option>
-                            <option value="COLOUR BASANA">COLOUR BASANA</option>
-                            <option value="GREY CLOTH">GREY CLOTH</option>
-                            <option value="COTTON CLOTH">COTTON CLOTH</option>
-                            {Array.from(new Set(products.map(p => p.productGroupName).filter(Boolean)))
-                              .filter(g => g !== 'COLOUR BASANA' && g !== 'GREY CLOTH' && g !== 'COTTON CLOTH')
-                              .map(g => (
-                                <option key={g} value={g}>{g}</option>
-                              ))
-                            }
-                          </select>
-                        </div>
-                      </>
-                    )}
 
                     <div className="space-y-2 col-span-full">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">GST Status</label>
@@ -1862,8 +2089,9 @@ export default function Inventory() {
                   </>
                 ) : (
                   <>
-                    {/* CLOTH SPECIFIC FIELDS (ORIGINAL) */}
-                    <div className="space-y-2">
+                    {/* CLOTH SPECIFIC FIELDS (MULTI-ROW ITEMIZATION) */}
+                    {/* Payment Mode */}
+                    <div className="space-y-2 col-span-full md:col-span-1">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Mode</label>
                       <div className="flex gap-4">
                         <label className={cn(
@@ -1874,7 +2102,7 @@ export default function Inventory() {
                         )}>
                           <input 
                             type="radio" 
-                            name="paymentType" 
+                            name="clothPaymentType" 
                             value="Cash"
                             checked={(formData.paymentType || 'Cash') === 'Cash'}
                             onChange={() => setFormData({ ...formData, paymentType: 'Cash' })}
@@ -1900,7 +2128,7 @@ export default function Inventory() {
                         )}>
                           <input 
                             type="radio" 
-                            name="paymentType" 
+                            name="clothPaymentType" 
                             value="Credit"
                             checked={formData.paymentType === 'Credit'}
                             onChange={() => setFormData({ ...formData, paymentType: 'Credit' })}
@@ -1921,92 +2149,8 @@ export default function Inventory() {
                       </div>
                     </div>
 
-                    <div className="space-y-2 animate-in fade-in duration-200">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Description</label>
-                      <select 
-                        required
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                        value={formData.fabricType || ''}
-                        onChange={(e) => {
-                          const desc = e.target.value;
-                          const matchedProduct = products.find(p => p.description === desc);
-                          const groupName = matchedProduct?.productGroupName || formData.productGroupName || 'COLOUR BASANA';
-                          
-                          setFormData({
-                            ...formData,
-                            fabricType: desc,
-                            productGroupName: groupName
-                          });
-                        }}
-                      >
-                        <option value="" disabled>Select Product Description</option>
-                        {products.map(p => p && p.description && (
-                          <option key={p.id || p.name} value={p.description}>
-                            {p.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-2 animate-in fade-in duration-200">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Product Group Name</label>
-                      <select 
-                        required
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                        value={formData.productGroupName || ''}
-                        onChange={(e) => setFormData({ ...formData, productGroupName: e.target.value })}
-                      >
-                        <option value="" disabled>Select Product Group Name</option>
-                        <option value="COLOUR BASANA">COLOUR BASANA</option>
-                        <option value="GREY CLOTH">GREY CLOTH</option>
-                        <option value="COTTON CLOTH">COTTON CLOTH</option>
-                        {Array.from(new Set(products.map(p => p.productGroupName).filter(Boolean)))
-                          .filter(g => g !== 'COLOUR BASANA' && g !== 'GREY CLOTH' && g !== 'COTTON CLOTH')
-                          .map(g => (
-                            <option key={g} value={g}>{g}</option>
-                          ))
-                        }
-                      </select>
-                    </div>
-
-                    <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Quantity (Meters)</label>
-                      <input 
-                        required
-                        type="number" 
-                        step="any"
-                        placeholder="Enter quantity in meters"
-                        min="0.001"
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                        value={formData.quantity !== undefined && formData.quantity !== 0 ? formData.quantity : ''}
-                        onChange={(e) => {
-                          const qty = parseFloat(e.target.value) || 0;
-                          const isGST = (formData.gstType || 'GST') === 'GST';
-                          const amt = formData.amount || 0;
-                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getActiveGSTPercents(formData) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
-                          let calculatedCGST = 0;
-                          let calculatedSGST = 0;
-                          let calculatedIGST = 0;
-                          if (isGST) {
-                            if (isInterstate) {
-                              calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
-                            } else {
-                              calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                              calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
-                            }
-                          }
-                          const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
-                          setFormData({
-                            ...formData,
-                            quantity: qty,
-                            pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                          });
-                        }}
-                        onWheel={(e) => e.currentTarget.blur()}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
+                    {/* Choose Date */}
+                    <div className="space-y-2 md:col-span-1">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Choose Date</label>
                       <input 
                         required
@@ -2017,7 +2161,8 @@ export default function Inventory() {
                       />
                     </div>
 
-                    <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                    {/* Credit Days */}
+                    <div className="space-y-2 md:col-span-1">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Credit Days</label>
                       <input 
                         type="number" 
@@ -2030,15 +2175,16 @@ export default function Inventory() {
                       />
                     </div>
 
-                    <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                    {/* Calculated Due Date */}
+                    <div className="space-y-2 md:col-span-1">
                       <label className="text-[11px] font-bold text-rose-500 uppercase tracking-widest px-1">Calculated Due Date</label>
                       <div className="w-full bg-rose-50 border border-rose-100 rounded-2xl py-4 px-6 text-sm font-black text-rose-700 shadow-sm flex items-center gap-2 h-[54px]">
                         {addDays(formData.entryDate || new Date().toISOString().split('T')[0], formData.creditDays)}
                       </div>
                     </div>
 
-                    {/* Amount & GST params */}
-                    <div className="space-y-2 col-span-full">
+                    {/* GST Status Choice */}
+                    <div className="space-y-2 md:col-span-2">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">GST Status</label>
                       <div className="flex gap-4">
                         <label
@@ -2055,28 +2201,8 @@ export default function Inventory() {
                             value="GST"
                             checked={(formData.gstType || 'GST') === 'GST'}
                             onChange={() => {
-                              const amt = formData.amount || 0;
-                              const { cgstPercent, sgstPercent, igstPercent, isInterstate } = getActiveGSTPercents(formData);
-                              let calculatedCGST = 0;
-                              let calculatedSGST = 0;
-                              let calculatedIGST = 0;
-                              if (isInterstate) {
-                                calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
-                              } else {
-                                calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                                calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
-                              }
-                              const qty = formData.quantity || 0;
-                              const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
-                              setFormData({
-                                ...formData,
-                                gstType: 'GST',
-                                cgst: calculatedCGST,
-                                sgst: calculatedSGST,
-                                igst: calculatedIGST,
-                                totalCost: calculatedTotalCost,
-                                pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                              });
+                              const updatedFormData = syncClothCalculations(clothRows, { ...formData, gstType: 'GST' });
+                              setFormData(updatedFormData);
                             }}
                             className="sr-only"
                           />
@@ -2106,17 +2232,8 @@ export default function Inventory() {
                             value="NON-GST"
                             checked={formData.gstType === 'NON-GST'}
                             onChange={() => {
-                              const amt = formData.amount || 0;
-                              const qty = formData.quantity || 0;
-                              setFormData({
-                                ...formData,
-                                gstType: 'NON-GST',
-                                cgst: 0,
-                                sgst: 0,
-                                igst: 0,
-                                totalCost: amt,
-                                pricePerMeter: qty > 0 ? (amt / qty) : (formData.pricePerMeter || 0)
-                              });
+                              const updatedFormData = syncClothCalculations(clothRows, { ...formData, gstType: 'NON-GST' });
+                              setFormData(updatedFormData);
                             }}
                             className="sr-only"
                           />
@@ -2135,207 +2252,301 @@ export default function Inventory() {
                       </div>
                     </div>
 
-                    <div className="space-y-2 animate-in fade-in duration-200">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Amount (Taxable Subtotal) (₹)</label>
-                      <input 
-                        required
-                        type="number"
-                        placeholder="0.00"
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                        value={formData.amount !== undefined && formData.amount !== 0 ? formData.amount : ''}
-                        onChange={(e) => {
-                          const amt = parseFloat(e.target.value) || 0;
-                          const isGST = (formData.gstType || 'GST') === 'GST';
-                          const { cgstPercent, sgstPercent, igstPercent, isInterstate } = isGST ? getActiveGSTPercents(formData) : { cgstPercent: 0, sgstPercent: 0, igstPercent: 0, isInterstate: false };
-                          let calculatedCGST = 0;
-                          let calculatedSGST = 0;
-                          let calculatedIGST = 0;
-                          if (isGST) {
-                            if (isInterstate) {
-                              calculatedIGST = parseFloat(((amt * igstPercent) / 100).toFixed(2));
-                            } else {
-                              calculatedCGST = parseFloat(((amt * cgstPercent) / 100).toFixed(2));
-                              calculatedSGST = parseFloat(((amt * sgstPercent) / 100).toFixed(2));
-                            }
-                          }
-                          const calculatedTotalCost = parseFloat((amt + calculatedCGST + calculatedSGST + calculatedIGST).toFixed(2));
-                          const qty = formData.quantity || 0;
-                          setFormData({
-                            ...formData,
-                            amount: amt,
-                            cgst: calculatedCGST,
-                            sgst: calculatedSGST,
-                            igst: calculatedIGST,
-                            totalCost: calculatedTotalCost,
-                            pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                          });
-                        }}
-                        onWheel={(e) => e.currentTarget.blur()}
-                      />
+                    {/* Repeating Cloth Items Section */}
+                    <div className="col-span-full bg-slate-50/50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-indigo-500" />
+                          Cloth Items Selection
+                        </h4>
+                        {!editingId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updatedRows = [
+                                ...clothRows,
+                                {
+                                  fabricType: products[0]?.description || '',
+                                  productGroupName: products[0]?.productGroupName || 'COLOUR BASANA',
+                                  quantity: 0,
+                                  pricePerMeter: 0,
+                                  amount: 0,
+                                  godown: godowns[0]?.name || 'UNIT-1'
+                                }
+                              ];
+                              setClothRows(updatedRows);
+                              const updatedFormData = syncClothCalculations(updatedRows, formData);
+                              setFormData(updatedFormData);
+                            }}
+                            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Add Cloth Type
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Header for desktop wide view */}
+                      <div className="hidden lg:grid grid-cols-[1.8fr_1.5fr_1fr_1fr_1.2fr_1.2fr_auto] gap-3 px-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                        <div>Product Description</div>
+                        <div>Product Group</div>
+                        <div>Quantity (m)</div>
+                        <div>Rate (₹)</div>
+                        <div>Total Amount (₹)</div>
+                        <div>Godown</div>
+                        <div className="w-8"></div>
+                      </div>
+
+                      <div className="space-y-4">
+                        {clothRows.map((row, idx) => (
+                          <div 
+                            key={idx} 
+                            className="bg-[#f8faff] lg:bg-transparent p-4 lg:p-0 rounded-2xl border border-slate-100 lg:border-none grid grid-cols-1 lg:grid-cols-[1.8fr_1.5fr_1fr_1fr_1.2fr_1.2fr_auto] gap-4 lg:gap-3 items-center animate-in fade-in duration-200"
+                          >
+                            {/* Product Description */}
+                            <div className="space-y-1.5 lg:space-y-0">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Product Description</label>
+                              <select 
+                                required
+                                className="w-full bg-[#f1f5f9] lg:bg-white border border-slate-200/50 rounded-xl py-2.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                                value={row.fabricType}
+                                onChange={(e) => {
+                                  const desc = e.target.value;
+                                  const matchedProduct = products.find(p => p.description === desc);
+                                  const groupName = matchedProduct?.productGroupName || row.productGroupName || 'COLOUR BASANA';
+                                  
+                                  const updatedRows = [...clothRows];
+                                  updatedRows[idx] = {
+                                    ...updatedRows[idx],
+                                    fabricType: desc,
+                                    productGroupName: groupName
+                                  };
+                                  setClothRows(updatedRows);
+                                  const updatedFormData = syncClothCalculations(updatedRows, formData);
+                                  setFormData(updatedFormData);
+                                }}
+                              >
+                                <option value="" disabled>Select Product Description</option>
+                                {products.map(p => p && p.description && (
+                                  <option key={p.id || p.name} value={p.description}>
+                                    {p.description}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Product Group Name */}
+                            <div className="space-y-1.5 lg:space-y-0">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Product Group</label>
+                              <select 
+                                required
+                                className="w-full bg-[#f1f5f9] lg:bg-white border border-slate-200/50 rounded-xl py-2.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                                value={row.productGroupName}
+                                onChange={(e) => {
+                                  const updatedRows = [...clothRows];
+                                  updatedRows[idx] = {
+                                    ...updatedRows[idx],
+                                    productGroupName: e.target.value
+                                  };
+                                  setClothRows(updatedRows);
+                                  const updatedFormData = syncClothCalculations(updatedRows, formData);
+                                  setFormData(updatedFormData);
+                                }}
+                              >
+                                <option value="" disabled>Select Product Group Name</option>
+                                <option value="COLOUR BASANA">COLOUR BASANA</option>
+                                <option value="GREY CLOTH">GREY CLOTH</option>
+                                <option value="COTTON CLOTH">COTTON CLOTH</option>
+                                {Array.from(new Set(products.map(p => p.productGroupName).filter(Boolean)))
+                                  .filter(g => g !== 'COLOUR BASANA' && g !== 'GREY CLOTH' && g !== 'COTTON CLOTH')
+                                  .map(g => (
+                                    <option key={g} value={g}>{g}</option>
+                                  ))
+                                }
+                              </select>
+                            </div>
+
+                            {/* Quantity */}
+                            <div className="space-y-1.5 lg:space-y-0">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Quantity (meters)</label>
+                              <input 
+                                required
+                                type="number" 
+                                step="any"
+                                placeholder="Qty"
+                                min="0.001"
+                                className="w-full bg-[#f1f5f9] lg:bg-white border border-slate-200/50 rounded-xl py-2.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                                value={row.quantity || ''}
+                                onChange={(e) => {
+                                  const qty = parseFloat(e.target.value) || 0;
+                                  const rate = row.pricePerMeter || 0;
+                                  const amt = parseFloat((qty * rate).toFixed(2));
+                                  
+                                  const updatedRows = [...clothRows];
+                                  updatedRows[idx] = {
+                                    ...updatedRows[idx],
+                                    quantity: qty,
+                                    amount: amt
+                                  };
+                                  setClothRows(updatedRows);
+                                  const updatedFormData = syncClothCalculations(updatedRows, formData);
+                                  setFormData(updatedFormData);
+                                }}
+                                onWheel={(e) => e.currentTarget.blur()}
+                              />
+                            </div>
+
+                            {/* Rate */}
+                            <div className="space-y-1.5 lg:space-y-0">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Rate (₹)</label>
+                              <input 
+                                required
+                                type="number" 
+                                step="any"
+                                placeholder="Rate"
+                                min="0.01"
+                                className="w-full bg-[#f1f5f9] lg:bg-white border border-slate-200/50 rounded-xl py-2.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                                value={row.pricePerMeter || ''}
+                                onChange={(e) => {
+                                  const rate = parseFloat(e.target.value) || 0;
+                                  const qty = row.quantity || 0;
+                                  const amt = parseFloat((qty * rate).toFixed(2));
+                                  
+                                  const updatedRows = [...clothRows];
+                                  updatedRows[idx] = {
+                                    ...updatedRows[idx],
+                                    pricePerMeter: rate,
+                                    amount: amt
+                                  };
+                                  setClothRows(updatedRows);
+                                  const updatedFormData = syncClothCalculations(updatedRows, formData);
+                                  setFormData(updatedFormData);
+                                }}
+                                onWheel={(e) => e.currentTarget.blur()}
+                              />
+                            </div>
+
+                            {/* Total Amount */}
+                            <div className="space-y-1.5 lg:space-y-0">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Total Amount (₹)</label>
+                              <div className="w-full bg-slate-100 border border-slate-200 rounded-xl py-2.5 px-4 text-xs font-extrabold text-slate-600 shadow-sm flex items-center h-[38px]">
+                                ₹ {row.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </div>
+                            </div>
+
+                            {/* Godown Selection */}
+                            <div className="space-y-1.5 lg:space-y-0">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Godown</label>
+                              <select 
+                                required
+                                className="w-full bg-[#f1f5f9] lg:bg-white border border-slate-200/50 rounded-xl py-2.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
+                                value={row.godown}
+                                onChange={(e) => {
+                                  const updatedRows = [...clothRows];
+                                  updatedRows[idx] = {
+                                    ...updatedRows[idx],
+                                    godown: e.target.value
+                                  };
+                                  setClothRows(updatedRows);
+                                }}
+                              >
+                                <option value="" disabled>Select Godown</option>
+                                {godowns.map(g => (
+                                  <option key={g.id} value={g.name}>
+                                    {g.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Delete Action button */}
+                            <div className="flex justify-end pt-2 lg:pt-0">
+                              {!editingId && clothRows.length > 1 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updatedRows = clothRows.filter((_, i) => i !== idx);
+                                    setClothRows(updatedRows);
+                                    const updatedFormData = syncClothCalculations(updatedRows, formData);
+                                    setFormData(updatedFormData);
+                                  }}
+                                  className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all"
+                                  title="Remove item"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              ) : (
+                                <div className="w-8 h-8 hidden lg:block"></div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
+                    {/* Overall Taxable Amount (Subtotal) */}
+                    <div className="space-y-2 md:col-span-1 animate-in fade-in duration-200">
+                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Amount (Taxable Subtotal) (₹)</label>
+                      <div className="w-full bg-[#f8faff] rounded-2xl py-4 px-6 text-sm font-bold text-slate-700 shadow-sm flex items-center h-[54px]">
+                        ₹ {(formData.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </div>
+                    </div>
+
+                    {/* CGST, SGST, IGST Fields */}
                     {(formData.gstType || 'GST') === 'GST' && (
                       <>
                         {getActiveGSTPercents(formData).isInterstate ? (
-                          <div className="space-y-2 animate-in fade-in duration-200">
-                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 animate-in fade-in duration-200">
+                          <div className="space-y-2 md:col-span-2 animate-in fade-in duration-200">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
                               IGST Rate (%) &amp; Amount (₹)
                             </label>
                             <div className="flex gap-2">
                               <div className="w-1/3">
-                                <input 
-                                  type="number"
-                                  step="0.1"
-                                  placeholder="%"
-                                  className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
-                                  value={getActiveGSTPercents(formData).igstPercent}
-                                  onChange={(e) => {
-                                    const pct = parseFloat(e.target.value) || 0;
-                                    const amt = formData.amount || 0;
-                                    const calculatedIGST = parseFloat(((amt * pct) / 100).toFixed(2));
-                                    const calculatedTotalCost = parseFloat((amt + calculatedIGST).toFixed(2));
-                                    const qty = formData.quantity || 0;
-                                    setFormData({
-                                      ...formData,
-                                      igstPercent: pct,
-                                      igst: calculatedIGST,
-                                      cgst: 0,
-                                      sgst: 0,
-                                      totalCost: calculatedTotalCost,
-                                      pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                    });
-                                  }}
-                                />
+                                <div className="w-full bg-[#f8faff] rounded-2xl py-4 px-3 text-sm font-bold text-slate-700 shadow-sm text-center h-[54px] flex items-center justify-center">
+                                  {getActiveGSTPercents(formData).igstPercent}%
+                                </div>
                               </div>
                               <div className="w-2/3">
-                                <input 
-                                  type="number" 
-                                  placeholder="0.00"
-                                  className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                                  value={formData.igst !== undefined ? formData.igst : ''}
-                                  onChange={(e) => {
-                                    const ig = parseFloat(e.target.value) || 0;
-                                    const subAmt = formData.amount || 0;
-                                    const calculatedTotalCost = parseFloat((subAmt + ig).toFixed(2));
-                                    const qty = formData.quantity || 0;
-                                    setFormData({
-                                      ...formData,
-                                      igst: ig,
-                                      cgst: 0,
-                                      sgst: 0,
-                                      totalCost: calculatedTotalCost,
-                                      pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                    });
-                                  }}
-                                  onWheel={(e) => e.currentTarget.blur()}
-                                />
+                                <div className="w-full bg-[#f8faff] rounded-2xl py-4 px-4 text-sm font-medium text-slate-700 shadow-sm h-[54px] flex items-center">
+                                  ₹ {(formData.igst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                </div>
                               </div>
                             </div>
                           </div>
                         ) : (
                           <>
-                            <div className="space-y-2 animate-in fade-in duration-200">
+                            <div className="space-y-2 md:col-span-1 animate-in fade-in duration-200">
                               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
                                 CGST Rate (%) &amp; Amount (₹)
                               </label>
                               <div className="flex gap-2">
                                 <div className="w-1/3">
-                                  <input 
-                                    type="number"
-                                    step="0.1"
-                                    placeholder="%"
-                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
-                                    value={getActiveGSTPercents(formData).cgstPercent}
-                                    onChange={(e) => {
-                                      const pct = parseFloat(e.target.value) || 0;
-                                      const amt = formData.amount || 0;
-                                      const calculatedCGST = parseFloat(((amt * pct) / 100).toFixed(2));
-                                      const calculatedTotalCost = parseFloat((amt + calculatedCGST + (formData.sgst || 0)).toFixed(2));
-                                      const qty = formData.quantity || 0;
-                                      setFormData({
-                                        ...formData,
-                                        cgstPercent: pct,
-                                        cgst: calculatedCGST,
-                                        totalCost: calculatedTotalCost,
-                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                      });
-                                    }}
-                                  />
+                                  <div className="w-full bg-[#f8faff] rounded-2xl py-4 px-3 text-sm font-bold text-slate-700 shadow-sm text-center h-[54px] flex items-center justify-center">
+                                    {getActiveGSTPercents(formData).cgstPercent}%
+                                  </div>
                                 </div>
                                 <div className="w-2/3">
-                                  <input 
-                                    type="number" 
-                                    placeholder="0.00"
-                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                                    value={formData.cgst !== undefined ? formData.cgst : ''}
-                                    onChange={(e) => {
-                                      const cg = parseFloat(e.target.value) || 0;
-                                      const subAmt = formData.amount || 0;
-                                      const calculatedTotalCost = parseFloat((subAmt + cg + (formData.sgst || 0)).toFixed(2));
-                                      const qty = formData.quantity || 0;
-                                      setFormData({
-                                        ...formData,
-                                        cgst: cg,
-                                        igst: 0,
-                                        totalCost: calculatedTotalCost,
-                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                      });
-                                    }}
-                                    onWheel={(e) => e.currentTarget.blur()}
-                                  />
+                                  <div className="w-full bg-[#f8faff] rounded-2xl py-4 px-4 text-sm font-medium text-slate-700 shadow-sm h-[54px] flex items-center">
+                                    ₹ {(formData.cgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                  </div>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="space-y-2 animate-in fade-in duration-200">
+                            <div className="space-y-2 md:col-span-1 animate-in fade-in duration-200">
                               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">
                                 SGST Rate (%) &amp; Amount (₹)
                               </label>
                               <div className="flex gap-2">
                                 <div className="w-1/3">
-                                  <input 
-                                    type="number"
-                                    step="0.1"
-                                    placeholder="%"
-                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm text-center"
-                                    value={getActiveGSTPercents(formData).sgstPercent}
-                                    onChange={(e) => {
-                                      const pct = parseFloat(e.target.value) || 0;
-                                      const amt = formData.amount || 0;
-                                      const calculatedSGST = parseFloat(((amt * pct) / 100).toFixed(2));
-                                      const calculatedTotalCost = parseFloat((amt + (formData.cgst || 0) + calculatedSGST).toFixed(2));
-                                      const qty = formData.quantity || 0;
-                                      setFormData({
-                                        ...formData,
-                                        sgstPercent: pct,
-                                        sgst: calculatedSGST,
-                                        totalCost: calculatedTotalCost,
-                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                      });
-                                    }}
-                                  />
+                                  <div className="w-full bg-[#f8faff] rounded-2xl py-4 px-3 text-sm font-bold text-slate-700 shadow-sm text-center h-[54px] flex items-center justify-center">
+                                    {getActiveGSTPercents(formData).sgstPercent}%
+                                  </div>
                                 </div>
                                 <div className="w-2/3">
-                                  <input 
-                                    type="number" 
-                                    placeholder="0.00"
-                                    className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm"
-                                    value={formData.sgst !== undefined ? formData.sgst : ''}
-                                    onChange={(e) => {
-                                      const sg = parseFloat(e.target.value) || 0;
-                                      const subAmt = formData.amount || 0;
-                                      const calculatedTotalCost = parseFloat((subAmt + (formData.cgst || 0) + sg).toFixed(2));
-                                      const qty = formData.quantity || 0;
-                                      setFormData({
-                                        ...formData,
-                                        sgst: sg,
-                                        igst: 0,
-                                        totalCost: calculatedTotalCost,
-                                        pricePerMeter: qty > 0 ? (calculatedTotalCost / qty) : (formData.pricePerMeter || 0)
-                                      });
-                                    }}
-                                    onWheel={(e) => e.currentTarget.blur()}
-                                  />
+                                  <div className="w-full bg-[#f8faff] rounded-2xl py-4 px-4 text-sm font-medium text-slate-700 shadow-sm h-[54px] flex items-center">
+                                    ₹ {(formData.sgst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -2344,7 +2555,8 @@ export default function Inventory() {
                       </>
                     )}
 
-                    <div className="space-y-2 animate-in fade-in duration-200">
+                    {/* Net Amount */}
+                    <div className="space-y-2 md:col-span-1 animate-in fade-in duration-200">
                       <label className="text-[11px] font-bold text-indigo-600 uppercase tracking-widest px-1 animate-in fade-in duration-200">
                         Net Amount (Total Cost) (₹)
                       </label>
@@ -2353,7 +2565,8 @@ export default function Inventory() {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    {/* Amount Paid Initially */}
+                    <div className="space-y-2 md:col-span-1">
                       <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-1.5">
                         <Coins className="w-3.5 h-3.5 text-emerald-500" />
                         Amount Paid Initially (₹)

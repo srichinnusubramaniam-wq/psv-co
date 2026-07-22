@@ -2250,7 +2250,7 @@ export default function Reports() {
                                   <td className="py-2 px-4 font-bold text-indigo-600">{lot.id}</td>
                                   <td className="py-2 px-4 text-slate-600 font-semibold">{lot.supplierName}</td>
                                   <td className="py-2 px-4 text-slate-500">
-                                    <span className="capitalize font-medium text-slate-700">{lot.rawMaterialType || 'cloth'}</span>
+                                    <span className="capitalize font-medium text-slate-700">{(lot.rawMaterialType || 'cloth').replace(/_/g, ' ')}</span>
                                     {lot.fabricType && lot.fabricType.toLowerCase() !== (lot.rawMaterialType || 'cloth').toLowerCase() && ` (${lot.fabricType})`}
                                   </td>
                                   <td className="py-2 px-4 text-right font-bold text-slate-800">₹{lotGross.toLocaleString('en-IN')}</td>

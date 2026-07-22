@@ -15,6 +15,7 @@ import Billing from '@/src/components/Billing';
 import Expenses from '@/src/components/Expenses';
 import Income from '@/src/components/Income';
 import CustomerReceipts from '@/src/components/CustomerReceipts';
+import SupplierReceipts from '@/src/components/SupplierReceipts';
 import Reports from '@/src/components/Reports';
 import Settings from '@/src/components/Settings';
 import Auth from '@/src/components/Auth';
@@ -93,6 +94,8 @@ export default function App() {
         return <Income />;
       case 'customer receipts':
         return <CustomerReceipts />;
+      case 'supplier receipts':
+        return <SupplierReceipts />;
       case 'reports':
         return <Reports />;
       case 'settings':

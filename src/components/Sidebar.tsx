@@ -8,12 +8,14 @@ import {
   Factory,
   Tag,
   Receipt,
-  TrendingUp
+  TrendingUp,
+  Coins
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 
 const navItems = [
   { icon: Package, label: 'Purchase' },
+  { icon: Coins, label: 'Supplier Receipts' },
   { icon: Factory, label: 'Godown Transfer' },
   { icon: Tag, label: 'Master' },
   { icon: Receipt, label: 'Billing' },
