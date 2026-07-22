@@ -140,6 +140,7 @@ export default function Reports() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>('All');
   const [companyName, setCompanyName] = useState('P.S.V & CO');
   const [selectedLedgerType, setSelectedLedgerType] = useState<string>('All');
+  const [selectedItemModel, setSelectedItemModel] = useState<string>('All');
   const [ledgerItemToDelete, setLedgerItemToDelete] = useState<any | null>(null);
   const [isDeleteLedgerOpen, setIsDeleteLedgerOpen] = useState(false);
 
@@ -444,6 +445,33 @@ export default function Reports() {
   }, [inventory, startDate, endDate, selectedSupplier, searchQuery]);
 
 
+  // Derived unique item/models list for Godown Stock Ledger filter
+  const availableItemModels = useMemo(() => {
+    const modelsSet = new Set<string>();
+    
+    // 1. From production assignments
+    production.forEach(p => {
+      const m = (p.modelName || p.fabricType || '').trim();
+      if (m) modelsSet.add(m);
+    });
+
+    // 2. From Product Master stored in localStorage
+    try {
+      const savedProducts = JSON.parse(localStorage.getItem('inven_product_master') || '[]');
+      if (Array.isArray(savedProducts)) {
+        savedProducts.forEach((pm: any) => {
+          if (pm.name && pm.name.trim()) {
+            modelsSet.add(pm.name.trim());
+          }
+        });
+      }
+    } catch (e) {
+      console.error('Failed to parse product master for models', e);
+    }
+
+    return Array.from(modelsSet).sort((a, b) => a.localeCompare(b));
+  }, [production]);
+
   // 7. Godown Stock Ledger Calculations
   const godownReportData = useMemo(() => {
     const filtered = production.filter(p => {
@@ -466,13 +494,16 @@ export default function Reports() {
       
       const matchesType = selectedLedgerType === 'All' || itemType === selectedLedgerType;
 
+      const pModel = (p.modelName || p.fabricType || '').trim();
+      const matchesItemModel = selectedItemModel === 'All' || pModel.toLowerCase() === selectedItemModel.trim().toLowerCase();
+
       const matchSearch = searchQuery === '' ||
         p.fabricType.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.modelName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.unit.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (p.toGodown && p.toGodown.toLowerCase().includes(searchQuery.toLowerCase()));
         
-      return matchRange && matchesGodown && matchesType && matchSearch;
+      return matchRange && matchesGodown && matchesType && matchesItemModel && matchSearch;
     });
 
     const summary = filtered.reduce((acc, p) => {
@@ -503,8 +534,10 @@ export default function Reports() {
       totalRecords: 0
     });
 
-    return { items: filtered, summary };
-  }, [production, startDate, endDate, selectedGodown, selectedLedgerType, searchQuery]);
+    const netFinished = Math.max(0, summary.totalFinished - summary.totalDamage);
+
+    return { items: filtered, summary: { ...summary, netFinished } };
+  }, [production, startDate, endDate, selectedGodown, selectedLedgerType, selectedItemModel, searchQuery]);
 
 
   // Record Expense Entry on Supplier Payment
@@ -935,7 +968,7 @@ export default function Reports() {
 
           <div className={cn(
             "grid grid-cols-1 gap-6 items-end",
-            (selectedReport === 'godown' || selectedReport === 'supplier' || selectedReport === 'income') ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-3"
+            selectedReport === 'godown' ? "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" : (selectedReport === 'supplier' || selectedReport === 'income') ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-3"
           )}>
             <div className="space-y-1.5">
               <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
@@ -992,6 +1025,22 @@ export default function Reports() {
                     <option value="Finished Goods">Finished Goods</option>
                     <option value="Transfer">Transfer</option>
                     <option value="Damage">Damage</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                    <Package className="w-3 h-3 text-slate-400" /> Item / Model Details
+                  </label>
+                  <select
+                    value={selectedItemModel}
+                    onChange={(e) => setSelectedItemModel(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all cursor-pointer"
+                  >
+                    <option value="All">All Items / Models</option>
+                    {availableItemModels.map(model => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
                   </select>
                 </div>
               </>
@@ -1558,7 +1607,6 @@ export default function Reports() {
                           <th className="pb-3.5 px-4">Due Date</th>
                           <th className="pb-3.5 px-4">Net Amount</th>
                           <th className="pb-3.5 px-4">Payment Status</th>
-                          <th className="pb-3.5 text-center print:hidden">Payments Desk</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1649,22 +1697,13 @@ export default function Reports() {
                                   </div>
                                 </div>
                               </td>
-                              <td className="py-4 px-4 text-center print:hidden">
-                                <button
-                                  onClick={() => openPaymentDialog(item)}
-                                  className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 border-none text-indigo-600 font-bold text-[10px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
-                                >
-                                  <Coins className="w-3.5 h-3.5" />
-                                  Pay/Manage
-                                </button>
-                              </td>
                             </tr>
                           );
                         })}
 
                         {supplierReportData.items.length === 0 && (
                           <tr>
-                            <td colSpan={6} className="text-center py-10">
+                            <td colSpan={5} className="text-center py-10">
                               <p className="text-xs font-black text-slate-400 uppercase select-none">No active supplier records in coordinates</p>
                             </td>
                           </tr>
@@ -1679,6 +1718,41 @@ export default function Reports() {
             {/* Godown Stock Ledger Section */}
             {selectedReport === 'godown' && (
               <>
+                {/* 1. Sum grid metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Net Available FG Stock</p>
+                    <h3 className="text-xl font-black text-emerald-600 tracking-tight mt-2 select-none">
+                      {godownReportData.summary.netFinished.toLocaleString()} pcs
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Available stock (FG minus Damage)</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Gross Finished Goods</p>
+                    <h3 className="text-xl font-black text-indigo-600 tracking-tight mt-2 select-none">
+                      {godownReportData.summary.totalFinished.toLocaleString()} pcs
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Total recorded finished receipts.</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Damage</p>
+                    <h3 className="text-xl font-black text-rose-600 tracking-tight mt-2 select-none">
+                      {godownReportData.summary.totalDamage.toLocaleString()} pcs
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Deducted from finished stock.</p>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Transfers</p>
+                    <h3 className="text-xl font-black text-sky-600 tracking-tight mt-2 select-none">
+                      {godownReportData.summary.totalTransferred.toLocaleString()} pcs
+                    </h3>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold leading-normal">Godown movement transactions.</p>
+                  </div>
+                </div>
+
                 {/* 2. Detailed godown transaction list */}
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-50 mb-4 select-none">
@@ -2233,7 +2307,7 @@ export default function Reports() {
                           <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
                             <tr>
                               <th className="py-2.5 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Lot ID</th>
-                              <th className="py-2.5 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Supplier</th>
+                              <th className="py-2.5 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Date</th>
                               <th className="py-2.5 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Raw Material / Fabric</th>
                               <th className="py-2.5 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Net Amount</th>
                               <th className="py-2.5 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Paid</th>
@@ -2248,7 +2322,7 @@ export default function Reports() {
                               return (
                                 <tr key={lot.id || lIdx} className="hover:bg-slate-50/50">
                                   <td className="py-2 px-4 font-bold text-indigo-600">{lot.id}</td>
-                                  <td className="py-2 px-4 text-slate-600 font-semibold">{lot.supplierName}</td>
+                                  <td className="py-2 px-4 text-slate-600 font-semibold">{lot.entryDate || '-'}</td>
                                   <td className="py-2 px-4 text-slate-500">
                                     <span className="capitalize font-medium text-slate-700">{(lot.rawMaterialType || 'cloth').replace(/_/g, ' ')}</span>
                                     {lot.fabricType && lot.fabricType.toLowerCase() !== (lot.rawMaterialType || 'cloth').toLowerCase() && ` (${lot.fabricType})`}

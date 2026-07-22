@@ -234,6 +234,104 @@ export default function ProductionUnits({
     return Math.max(0, maxStock - otherRowsSum);
   };
 
+  const cleanModelStr = (s?: string) => (s || '').replace(/\s+/g, '').replace(/\*/g, 'x').toLowerCase();
+
+  const deductFromFinishedGoods = (
+    list: ProductionAssignment[],
+    targetModelName: string,
+    targetGroupName: string | undefined,
+    qtyToDeduct: number
+  ): ProductionAssignment[] => {
+    if (qtyToDeduct <= 0 || !targetModelName) return list;
+
+    let remainingToDeduct = qtyToDeduct;
+    const targetNorm = cleanModelStr(targetModelName);
+    const groupNorm = cleanModelStr(targetGroupName);
+
+    return list.map(a => {
+      if (remainingToDeduct <= 0) return a;
+      const isFG = a.type === 'Finished Goods' || a.status === 'Finished Goods';
+      if (!isFG) return a;
+
+      const aModel = cleanModelStr(a.modelName || a.fabricType);
+      const aGroup = cleanModelStr(a.productGroupName);
+
+      const isModelMatch = aModel && targetNorm && (
+        aModel === targetNorm || 
+        aModel.includes(targetNorm) || 
+        targetNorm.includes(aModel)
+      );
+      const isGroupMatch = groupNorm && aGroup && (
+        aGroup === groupNorm || 
+        aGroup.includes(groupNorm) || 
+        groupNorm.includes(aGroup)
+      );
+
+      const match = isModelMatch || isGroupMatch;
+      if (match) {
+        const currentQty = a.quantity || 0;
+        const deduct = Math.min(currentQty, remainingToDeduct);
+        remainingToDeduct -= deduct;
+        const newQty = Math.max(0, currentQty - deduct);
+        const newFinishedPieces = a.finishedPieces !== undefined ? Math.max(0, a.finishedPieces - deduct) : newQty;
+        const newBalancePieces = a.balancePieces !== undefined ? Math.max(0, a.balancePieces - deduct) : 0;
+        return {
+          ...a,
+          quantity: newQty,
+          finishedPieces: newFinishedPieces,
+          balancePieces: newBalancePieces
+        };
+      }
+      return a;
+    });
+  };
+
+  const restoreToFinishedGoods = (
+    list: ProductionAssignment[],
+    targetModelName: string,
+    targetGroupName: string | undefined,
+    qtyToRestore: number
+  ): ProductionAssignment[] => {
+    if (qtyToRestore <= 0 || !targetModelName) return list;
+
+    let restored = false;
+    const targetNorm = cleanModelStr(targetModelName);
+    const groupNorm = cleanModelStr(targetGroupName);
+
+    return list.map(a => {
+      if (restored) return a;
+      const isFG = a.type === 'Finished Goods' || a.status === 'Finished Goods';
+      if (!isFG) return a;
+
+      const aModel = cleanModelStr(a.modelName || a.fabricType);
+      const aGroup = cleanModelStr(a.productGroupName);
+
+      const isModelMatch = aModel && targetNorm && (
+        aModel === targetNorm || 
+        aModel.includes(targetNorm) || 
+        targetNorm.includes(aModel)
+      );
+      const isGroupMatch = groupNorm && aGroup && (
+        aGroup === groupNorm || 
+        aGroup.includes(groupNorm) || 
+        groupNorm.includes(aGroup)
+      );
+
+      const match = isModelMatch || isGroupMatch;
+      if (match) {
+        restored = true;
+        const newQty = (a.quantity || 0) + qtyToRestore;
+        const newFinished = a.finishedPieces !== undefined ? a.finishedPieces + qtyToRestore : newQty;
+        return {
+          ...a,
+          quantity: newQty,
+          finishedPieces: newFinished
+        };
+      }
+      return a;
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -258,7 +356,20 @@ export default function ProductionUnits({
       const originalAssignment = assignments.find(a => a.id === editingId);
       // For editing, we usually edit only one at a time from the table
       const item = formData.items[0];
-      const updated = assignments.map(a => {
+
+      let updatedList = [...assignments];
+
+      // Restore old damage quantity back to FG if editing a damage entry
+      if (originalAssignment && (originalAssignment.type === 'Damage' || originalAssignment.status === 'Damage')) {
+        updatedList = restoreToFinishedGoods(
+          updatedList,
+          originalAssignment.modelName,
+          originalAssignment.productGroupName,
+          originalAssignment.quantity || 0
+        );
+      }
+
+      updatedList = updatedList.map(a => {
         if (a.id === editingId) {
           const totalQty = item.quantity || 0;
           const status = formData.status || 'Assigned';
@@ -306,7 +417,18 @@ export default function ProductionUnits({
         }
         return a;
       });
-      saveToLocal(updated);
+
+      // Deduct new damage quantity if updated entry is Damage
+      if (formData.type === 'Damage') {
+        updatedList = deductFromFinishedGoods(
+          updatedList,
+          item.modelName,
+          item.productGroupName,
+          item.quantity || 0
+        );
+      }
+
+      saveToLocal(updatedList);
 
       // Deduct or restore stock based on original edit
       if (selectedItem) {
@@ -400,7 +522,23 @@ export default function ProductionUnits({
         };
       });
 
-      const updated = [...newAssignments, ...assignments];
+      let currentAssignmentsList = [...assignments];
+
+      if (formData.type === 'Damage') {
+        newAssignments.forEach(dmg => {
+          const qty = dmg.quantity || 0;
+          if (qty > 0 && dmg.modelName) {
+            currentAssignmentsList = deductFromFinishedGoods(
+              currentAssignmentsList,
+              dmg.modelName,
+              dmg.productGroupName,
+              qty
+            );
+          }
+        });
+      }
+
+      const updated = [...newAssignments, ...currentAssignmentsList];
       saveToLocal(updated);
       
       // Update Next ID in settings
@@ -447,9 +585,20 @@ export default function ProductionUnits({
   const confirmDelete = () => {
     if (!itemToDelete) return;
     const targetAssignment = assignments.find(a => a.id === itemToDelete.id);
-    saveToLocal(assignments.filter(a => a.id !== itemToDelete.id));
+    let remaining = assignments.filter(a => a.id !== itemToDelete.id);
 
-    if (targetAssignment) {
+    if (targetAssignment && (targetAssignment.type === 'Damage' || targetAssignment.status === 'Damage')) {
+      remaining = restoreToFinishedGoods(
+        remaining,
+        targetAssignment.modelName,
+        targetAssignment.productGroupName,
+        targetAssignment.quantity || 0
+      );
+    }
+
+    saveToLocal(remaining);
+
+    if (targetAssignment && targetAssignment.inventoryItemId) {
       const updatedInventory = inventory.map(item => 
         item.id === targetAssignment.inventoryItemId 
           ? { ...item, quantity: item.quantity + (targetAssignment.quantity || 0) }
@@ -1103,6 +1252,18 @@ export default function ProductionUnits({
                                   <ChevronRight className="w-4 h-4 rotate-90" />
                                 </div>
                               </div>
+                              {item.modelName && (() => {
+                                const currentFg = assignments
+                                  .filter(a => (a.type === 'Finished Goods' || a.status === 'Finished Goods') && 
+                                    (a.modelName || '').trim().toLowerCase() === (item.modelName || '').trim().toLowerCase()
+                                  )
+                                  .reduce((sum, a) => sum + (a.quantity || 0), 0);
+                                return (
+                                  <p className="text-[10px] font-bold text-emerald-600 mt-1 px-1 flex items-center gap-1">
+                                    Current FG Stock: <span className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-emerald-800">{currentFg} pcs</span>
+                                  </p>
+                                );
+                              })()}
                             </div>
 
                             {/* Product Group Name */}
