@@ -236,6 +236,45 @@ export default function ProductionUnits({
 
   const cleanModelStr = (s?: string) => (s || '').replace(/\s+/g, '').replace(/\*/g, 'x').toLowerCase();
 
+  const getAvailableFgStock = (modelName: string, productGroupName?: string) => {
+    if (!modelName) return 0;
+    const targetNorm = cleanModelStr(modelName);
+    const groupNorm = cleanModelStr(productGroupName);
+
+    let fgStock = assignments
+      .filter(a => (a.type === 'Finished Goods' || a.status === 'Finished Goods'))
+      .filter(a => {
+        const aModel = cleanModelStr(a.modelName || a.fabricType);
+        const aGroup = cleanModelStr(a.productGroupName);
+
+        const isModelMatch = aModel && targetNorm && (
+          aModel === targetNorm || 
+          aModel.includes(targetNorm) || 
+          targetNorm.includes(aModel)
+        );
+        const isGroupMatch = groupNorm && aGroup && (
+          aGroup === groupNorm || 
+          aGroup.includes(groupNorm) || 
+          groupNorm.includes(aGroup)
+        );
+
+        return isModelMatch || (groupNorm ? isGroupMatch : false);
+      })
+      .reduce((sum, a) => sum + (a.quantity || 0), 0);
+
+    if (editingId) {
+      const editingAssignment = assignments.find(a => a.id === editingId);
+      if (editingAssignment && (editingAssignment.type === 'Damage' || editingAssignment.status === 'Damage')) {
+        const eModel = cleanModelStr(editingAssignment.modelName || editingAssignment.fabricType);
+        if (eModel && targetNorm && (eModel === targetNorm || eModel.includes(targetNorm) || targetNorm.includes(eModel))) {
+          fgStock += (editingAssignment.quantity || 0);
+        }
+      }
+    }
+
+    return Math.max(0, fgStock);
+  };
+
   const deductFromFinishedGoods = (
     list: ProductionAssignment[],
     targetModelName: string,
@@ -347,6 +386,21 @@ export default function ProductionUnits({
     if (selectedItem && totalQuantityRequested > maxStock) {
       alert(`Insufficient stock! Requested: ${totalQuantityRequested}${selectedItem?.unit === 'Meters' ? 'm' : 'pcs'}, Available: ${maxStock}${selectedItem?.unit === 'Meters' ? 'm' : 'pcs'}`);
       return;
+    }
+
+    // Damage Stock Validation
+    if (formData.type === 'Damage') {
+      for (const item of formData.items) {
+        const maxAvailable = getAvailableFgStock(item.modelName, item.productGroupName);
+        if ((item.quantity || 0) > maxAvailable) {
+          alert(`Damage quantity for "${item.modelName || 'selected model'}" (${item.quantity} pcs) cannot exceed current FG stock (${maxAvailable} pcs).`);
+          return;
+        }
+        if ((item.quantity || 0) <= 0) {
+          alert(`Please enter a valid damage quantity for "${item.modelName || 'selected model'}".`);
+          return;
+        }
+      }
     }
 
     const fabricType = selectedItem ? selectedItem.fabricType : (formData.type === 'Finished Goods' ? 'Finished Goods' : (formData.fabricType || 'Unknown'));
@@ -1232,9 +1286,12 @@ export default function ProductionUnits({
                                     const selectedDesc = e.target.value;
                                     const matchedProduct = productMaster.find(p => p && (p.description === selectedDesc || p.name === selectedDesc));
                                     const groupName = matchedProduct?.productGroupName || item.productGroupName || '';
+                                    const maxAvailable = getAvailableFgStock(selectedDesc, groupName);
+                                    const clampedQty = item.quantity && item.quantity > maxAvailable ? maxAvailable : item.quantity;
                                     updateItemRow(index, {
                                       modelName: selectedDesc,
                                       productGroupName: groupName,
+                                      quantity: clampedQty || 0,
                                       rate: 0,
                                       size: 'XL'
                                     });
@@ -1253,11 +1310,7 @@ export default function ProductionUnits({
                                 </div>
                               </div>
                               {item.modelName && (() => {
-                                const currentFg = assignments
-                                  .filter(a => (a.type === 'Finished Goods' || a.status === 'Finished Goods') && 
-                                    (a.modelName || '').trim().toLowerCase() === (item.modelName || '').trim().toLowerCase()
-                                  )
-                                  .reduce((sum, a) => sum + (a.quantity || 0), 0);
+                                const currentFg = getAvailableFgStock(item.modelName, item.productGroupName);
                                 return (
                                   <p className="text-[10px] font-bold text-emerald-600 mt-1 px-1 flex items-center gap-1">
                                     Current FG Stock: <span className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-emerald-800">{currentFg} pcs</span>
@@ -1294,10 +1347,25 @@ export default function ProductionUnits({
                                 required
                                 type="number"
                                 min="1"
+                                max={item.modelName ? getAvailableFgStock(item.modelName, item.productGroupName) : undefined}
                                 className="w-full bg-white border border-slate-100 rounded-2xl py-3.5 px-6 text-xs outline-none focus:ring-2 focus:ring-[#f43f5e]/10 font-medium text-slate-700 shadow-sm transition-all hover:bg-slate-50"
                                 placeholder="Enter quantity"
                                 value={item.quantity || ''}
-                                onChange={(e) => updateItemRow(index, { quantity: parseFloat(e.target.value) || 0 })}
+                                onChange={(e) => {
+                                  const rawVal = e.target.value;
+                                  if (rawVal === '') {
+                                    updateItemRow(index, { quantity: 0 });
+                                    return;
+                                  }
+                                  const enteredQty = parseFloat(rawVal) || 0;
+                                  const maxAvailable = getAvailableFgStock(item.modelName, item.productGroupName);
+                                  if (item.modelName && enteredQty > maxAvailable) {
+                                    updateItemRow(index, { quantity: maxAvailable });
+                                    alert(`Damage quantity cannot exceed current FG stock (${maxAvailable} pcs). Automatically adjusted to ${maxAvailable} pcs.`);
+                                  } else {
+                                    updateItemRow(index, { quantity: enteredQty });
+                                  }
+                                }}
                               />
                             </div>
                           </div>

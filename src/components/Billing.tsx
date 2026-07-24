@@ -165,9 +165,15 @@ export default function Billing() {
     setSrType('invoice');
   };
 
-  // Custom Delete Confirm state
+  // Custom Delete & Restore Confirm states
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; invoiceNo: string } | null>(null);
+
+  const [srDeleteConfirmOpen, setSrDeleteConfirmOpen] = useState(false);
+  const [srToDelete, setSrToDelete] = useState<any | null>(null);
+
+  const [restoreConfirmOpen, setRestoreConfirmOpen] = useState(false);
+  const [invoiceToRestore, setInvoiceToRestore] = useState<GeneratedInvoice | null>(null);
   
   // Data States
   const [invoices, setInvoices] = useState<GeneratedInvoice[]>([]);
@@ -1095,14 +1101,25 @@ export default function Billing() {
   };
 
   const handleDeleteSalesReturn = (retId: string) => {
-    if (window.confirm("Are you sure you want to delete this sales return record? This will subtract the quantity from original stock again.")) {
-      const found = salesReturns.find(r => r.id === retId);
-      if (found) {
-        removeSalesReturnStock(found.modelName, found.quantity);
-        const updated = salesReturns.filter(r => r.id !== retId);
-        saveSalesReturns(updated);
-        showToast('success', `Sales return ${retId} deleted. Stock adjusted accordingly.`);
-      }
+    const found = salesReturns.find(r => r.id === retId);
+    if (found) {
+      setSrToDelete(found);
+      setSrDeleteConfirmOpen(true);
+    }
+  };
+
+  const confirmDeleteSalesReturn = () => {
+    if (!srToDelete) return;
+    try {
+      removeSalesReturnStock(srToDelete.modelName, srToDelete.quantity);
+      const updated = salesReturns.filter(r => r.id !== srToDelete.id);
+      saveSalesReturns(updated);
+      showToast('success', `Sales return ${srToDelete.id} deleted. Quantity adjusted from stock.`);
+    } catch (e) {
+      showToast('error', 'Failed to delete sales return record.');
+    } finally {
+      setSrDeleteConfirmOpen(false);
+      setSrToDelete(null);
     }
   };
 
@@ -1239,27 +1256,34 @@ export default function Billing() {
 
   // Restore modified bill to its original form
   const handleRestoreInvoice = (inv: GeneratedInvoice) => {
-    if (window.confirm(`Are you sure you want to restore Bill ${inv.invoiceNo} to its original state? This will revert modifications.`)) {
-      try {
-        const savedInvoices = JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]');
-        const updated = savedInvoices.map((item: any) => {
-          if (item.id === inv.id) {
-            return {
-              ...item,
-              totalAmount: item.originalAmount || item.totalAmount,
-              isModified: false,
-              modifiedAt: undefined,
-              originalAmount: undefined
-            };
-          }
-          return item;
-        });
-        localStorage.setItem('inven_generated_invoices', JSON.stringify(updated));
-        triggerSync();
-        showToast('success', `Bill ${inv.invoiceNo} successfully restored.`);
-      } catch (e) {
-        showToast('error', 'Failed to restore bill.');
-      }
+    setInvoiceToRestore(inv);
+    setRestoreConfirmOpen(true);
+  };
+
+  const confirmRestoreInvoice = () => {
+    if (!invoiceToRestore) return;
+    try {
+      const savedInvoices = JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]');
+      const updated = savedInvoices.map((item: any) => {
+        if (item.id === invoiceToRestore.id) {
+          return {
+            ...item,
+            totalAmount: item.originalAmount || item.totalAmount,
+            isModified: false,
+            modifiedAt: undefined,
+            originalAmount: undefined
+          };
+        }
+        return item;
+      });
+      localStorage.setItem('inven_generated_invoices', JSON.stringify(updated));
+      triggerSync();
+      showToast('success', `Bill ${invoiceToRestore.invoiceNo} successfully restored.`);
+    } catch (e) {
+      showToast('error', 'Failed to restore bill.');
+    } finally {
+      setRestoreConfirmOpen(false);
+      setInvoiceToRestore(null);
     }
   };
 
@@ -2650,15 +2674,77 @@ export default function Billing() {
             <div className="flex gap-3">
               <button 
                 onClick={() => { setDeleteConfirmOpen(false); setInvoiceToDelete(null); }}
-                className="flex-1 py-3 px-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm"
+                className="flex-1 py-3 px-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm cursor-pointer"
               >
                 Cancel
               </button>
               <button 
                 onClick={confirmDeleteInvoice}
-                className="flex-1 py-3 px-4 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-100 text-sm"
+                className="flex-1 py-3 px-4 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-100 text-sm cursor-pointer"
               >
                 Delete Bill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM SALES RETURN DELETE CONFIRMATION DIALOG MODAL */}
+      {srDeleteConfirmOpen && srToDelete && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 p-8 text-center">
+            <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto mb-6 animate-pulse">
+              <Trash2 className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Delete Sales Return</h3>
+            <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed">
+              Are you sure you want to delete return record <span className="font-bold text-slate-700">"{srToDelete.id}"</span> for <span className="font-bold text-slate-700">{srToDelete.buyerName || 'buyer'}</span>?
+              <br />
+              <span className="text-rose-600 text-xs font-semibold block mt-2">
+                This will subtract {srToDelete.quantity} Pcs from original stock.
+              </span>
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setSrDeleteConfirmOpen(false); setSrToDelete(null); }}
+                className="flex-1 py-3 px-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDeleteSalesReturn}
+                className="flex-1 py-3 px-4 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-700 transition-colors shadow-lg shadow-rose-100 text-sm cursor-pointer"
+              >
+                Delete Return
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM RESTORE INVOICE CONFIRMATION DIALOG MODAL */}
+      {restoreConfirmOpen && invoiceToRestore && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 p-8 text-center">
+            <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mx-auto mb-6">
+              <RotateCcw className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Restore Bill</h3>
+            <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed">
+              Are you sure you want to restore Bill <span className="font-bold text-slate-700">"{invoiceToRestore.invoiceNo}"</span> to its original state?
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setRestoreConfirmOpen(false); setInvoiceToRestore(null); }}
+                className="flex-1 py-3 px-4 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmRestoreInvoice}
+                className="flex-1 py-3 px-4 rounded-xl bg-amber-600 text-white font-bold hover:bg-amber-700 transition-colors shadow-lg shadow-amber-100 text-sm cursor-pointer"
+              >
+                Restore Bill
               </button>
             </div>
           </div>

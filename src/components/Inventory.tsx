@@ -1246,6 +1246,7 @@ export default function Inventory() {
                   <th className="px-6 py-4">Item Details</th>
                   <th className="px-6 py-4">Payment Mode</th>
                   <th className="px-6 py-4">Due Date</th>
+                  <th className="px-6 py-4">Quantity</th>
                   <th className="px-6 py-4">Net Amount</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
@@ -1390,12 +1391,19 @@ export default function Inventory() {
                         )}
                       </td>
                       <td className="px-6 py-5">
-                        <p className="text-sm font-bold text-indigo-600">₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                        {Number(item.quantity) > 0 && (
-                          <p className="text-[10px] text-slate-500 font-semibold">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-bold text-slate-800">
                             {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
-                          </p>
-                        )}
+                          </span>
+                          {item.pricePerMeter > 0 && (
+                            <span className="text-[10px] text-slate-400 font-semibold">
+                              @ ₹{item.pricePerMeter}/{item.unit === 'KGs' ? 'kg' : (item.unit === 'Meters' ? 'm' : 'pc')}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <p className="text-sm font-bold text-indigo-600">₹{netAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-1.5">
@@ -1417,6 +1425,8 @@ export default function Inventory() {
                               const isSizingKullyItem = item.rawMaterialType === 'sizing_kully' || item.fabricType === 'Sizing Kully';
                               const isProcessingKullyItem = item.rawMaterialType === 'processing_kully' || item.fabricType === 'Processing Kully';
                               const totalVal = item.totalCost !== undefined ? item.totalCost : (item.pricePerMeter || 0) * (item.quantity || 0);
+                              const calculatedAmt = item.amount !== undefined ? item.amount : parseFloat(((item.pricePerMeter || 0) * (item.quantity || 0)).toFixed(2));
+                              
                               setFormData({
                                 ...item,
                                 rawMaterialType: isYarnItem ? 'yarn' : (isJariItem ? 'jari' : (isSizingKullyItem ? 'sizing_kully' : (isProcessingKullyItem ? 'processing_kully' : 'cloth'))),
@@ -1429,7 +1439,19 @@ export default function Inventory() {
                                 cgstPercent: item.cgstPercent !== undefined ? item.cgstPercent : undefined,
                                 sgstPercent: item.sgstPercent !== undefined ? item.sgstPercent : undefined,
                                 igstPercent: item.igstPercent !== undefined ? item.igstPercent : undefined
-                              }); 
+                              });
+
+                              setClothRows([
+                                {
+                                  fabricType: item.fabricType || products[0]?.description || '',
+                                  productGroupName: item.productGroupName || products[0]?.productGroupName || 'COLOUR BASANA',
+                                  quantity: item.quantity || 0,
+                                  pricePerMeter: item.pricePerMeter || 0,
+                                  amount: calculatedAmt,
+                                  godown: item.godown || godowns[0]?.name || 'UNIT-1'
+                                }
+                              ]);
+
                               setIsFormOpen(true); 
                             }}
                             className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
