@@ -1610,7 +1610,7 @@ export default function Reports() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {supplierReportData.items.map((item) => {
+                        {supplierReportData.items.map((item, idx) => {
                           const gross = item.totalCost !== undefined && item.totalCost !== null ? Number(item.totalCost) : (Number(item.pricePerMeter) || 0) * (Number(item.quantity) || 0);
                           const paid = Number(item.paidAmount) || 0;
                           const pending = Math.max(0, gross - paid);
@@ -1623,7 +1623,7 @@ export default function Reports() {
                           }
 
                           return (
-                            <tr key={item.id} className="hover:bg-slate-50/50 transition-all">
+                            <tr key={`supp-rep-${item.id}-${idx}`} className="hover:bg-slate-50/50 transition-all">
                               <td className="py-4 px-4">
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600">
@@ -2320,7 +2320,7 @@ export default function Reports() {
                               const lotPaid = Number(lot.paidAmount) || 0;
                               const lotPending = Math.max(0, lotGross - lotPaid);
                               return (
-                                <tr key={lot.id || lIdx} className="hover:bg-slate-50/50">
+                                <tr key={`stmt-lot-${lot.id}-${lIdx}`} className="hover:bg-slate-50/50">
                                   <td className="py-2 px-4 font-bold text-indigo-600">{lot.id}</td>
                                   <td className="py-2 px-4 text-slate-600 font-semibold">{lot.entryDate || '-'}</td>
                                   <td className="py-2 px-4 text-slate-500">

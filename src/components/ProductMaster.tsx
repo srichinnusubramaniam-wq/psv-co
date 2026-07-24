@@ -1422,7 +1422,7 @@ export default function ProductMaster() {
 
       {isFormOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-2xl sm:max-w-3xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">

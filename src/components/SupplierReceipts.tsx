@@ -17,7 +17,8 @@ import {
   History,
   Info,
   Clock,
-  Printer
+  Printer,
+  ChevronDown
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 
@@ -49,6 +50,8 @@ export default function SupplierReceipts() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [selectedSupplier, setSelectedSupplier] = useState('All');
+  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
   
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -271,6 +274,8 @@ export default function SupplierReceipts() {
 
   const resetForm = () => {
     setEditingId(null);
+    setIsSupplierDropdownOpen(false);
+    setSupplierSearchQuery('');
     setFormData({
       categoryId: 'EXP-CAT-SUPPLIER',
       date: new Date().toISOString().split('T')[0],
@@ -366,15 +371,21 @@ export default function SupplierReceipts() {
     const supplierObj = suppliers.find(s => s && s.id === modalSelectedSupplierId);
     if (!supplierObj) return { txns: [], bfBalance: 0, hasBf: false, endBalance: 0 };
 
-    const currentBalance = supplierObj.opBalance !== undefined 
-      ? Number(supplierObj.opBalance) 
-      : (supplierObj.openingBalance !== undefined ? Number(supplierObj.openingBalance) : 0);
-
     // 1. Gather recorded direct payments (Debits)
     const suppPayments = payments.filter(p => p.supplierId === modalSelectedSupplierId);
     const ledgerPayments = suppPayments.map(p => {
       const pDate = p.txnDate || p.date;
       const pTime = p.txnTime || "12:00:00";
+      let dateObj: Date;
+      if (p.createdAt) {
+        dateObj = new Date(p.createdAt);
+      } else {
+        dateObj = new Date(`${pDate}T${pTime}`);
+      }
+      if (isNaN(dateObj.getTime())) {
+        dateObj = new Date();
+      }
+
       return {
         id: p.id,
         txnDate: pDate,
@@ -382,9 +393,9 @@ export default function SupplierReceipts() {
         valueDate: p.valueDate || p.date,
         particulars: p.particulars || `UPI-DR-${p.refNo || 'XXXX'}-PhonePe-${p.supplierName?.toUpperCase() || 'SUPPLIER'}`,
         refNo: p.refNo || p.id,
-        debit: p.amount,
+        debit: Number(p.amount) || 0,
         credit: 0,
-        dateObj: new Date(`${pDate}T${pTime}`)
+        dateObj
       };
     });
 
@@ -393,7 +404,21 @@ export default function SupplierReceipts() {
     const ledgerPurchases = suppPurchases.map(item => {
       const amt = item.netAmount || item.totalCost || (Number(item.pricePerMeter) * Number(item.quantity)) || 0;
       const entryDate = item.entryDate || (item.createdAt ? item.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]);
-      const entryTime = item.createdAt ? item.createdAt.split('T')[1]?.split('.')[0] || "12:00:00" : "12:00:00";
+      
+      let dateObj: Date;
+      if (item.createdAt) {
+        dateObj = new Date(item.createdAt);
+      } else {
+        dateObj = new Date(`${entryDate}T12:00:00`);
+      }
+      if (isNaN(dateObj.getTime())) {
+        dateObj = new Date();
+      }
+
+      const entryTime = !isNaN(dateObj.getTime())
+        ? dateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : "12:00:00";
+
       return {
         id: item.id,
         txnDate: entryDate,
@@ -402,25 +427,41 @@ export default function SupplierReceipts() {
         particulars: item.particulars || `Purchase Lot #${item.id} - ${item.fabricType || ''} (${item.quantity} ${item.unit || 'Meters'})`,
         refNo: item.id,
         debit: 0,
-        credit: amt,
-        dateObj: new Date(`${entryDate}T${entryTime}`)
+        credit: Number(amt) || 0,
+        dateObj
       };
     });
 
-    // 3. Combine and sort ascending
+    // 3. Combine and sort ascending chronologically
     const allTxns = [...ledgerPayments, ...ledgerPurchases].sort((a, b) => {
       const tA = a.dateObj.getTime();
       const tB = b.dateObj.getTime();
-      if (isNaN(tA) || isNaN(tB)) {
-        return a.txnDate.localeCompare(b.txnDate);
+      if (tA !== tB) {
+        return tA - tB;
       }
-      return tA - tB;
+      return a.id.localeCompare(b.id);
     });
 
-    // 4. Calculate starting base balance by working backwards
+    // Calculate current live balance
     const totalCredits = allTxns.reduce((sum, t) => sum + t.credit, 0);
     const totalDebits = allTxns.reduce((sum, t) => sum + t.debit, 0);
-    const baseStartingBalance = currentBalance - totalCredits + totalDebits;
+
+    // Determine initial opening balance before any transactions
+    let initialBalance = 0;
+    if (supplierObj.initialBalance !== undefined) {
+      initialBalance = Number(supplierObj.initialBalance);
+    } else if (supplierObj.opBalance !== undefined) {
+      // If opBalance was recorded, derive base initial balance or current balance
+      const rawOp = Number(supplierObj.opBalance);
+      // If rawOp was updated with payments only or both:
+      initialBalance = rawOp;
+    } else if (supplierObj.openingBalance !== undefined) {
+      initialBalance = Number(supplierObj.openingBalance);
+    }
+
+    // Work backwards from current balance or forward from initial balance
+    const currentBalance = initialBalance + totalCredits - totalDebits;
+    const baseStartingBalance = initialBalance;
 
     // 5. Calculate cumulative running balance
     let bal = baseStartingBalance;
@@ -567,113 +608,111 @@ export default function SupplierReceipts() {
         </div>
       </div>
 
-      {/* List Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredPayments.map((payment) => (
-          <div key={payment.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4">
-               <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => { 
-                      setEditingId(payment.id); 
-                      setFormData({
-                        ...payment,
-                        txnDate: payment.txnDate || payment.date,
-                        txnTime: payment.txnTime || "12:00:00",
-                        valueDate: payment.valueDate || payment.date,
-                        particulars: payment.particulars || '',
-                        refNo: payment.refNo || ''
-                      }); 
-                      setIsFormOpen(true); 
-                    }}
-                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all cursor-pointer"
-                    title="Edit Record"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => setDeleteConfirmId(payment.id)} 
-                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all cursor-pointer"
-                    title="Delete Record"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-               </div>
-            </div>
-
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-[#4f3df5]">
-                <ArrowUpCircle className="w-6 h-6" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{payment.id}</p>
-                <h4 className="text-base font-bold text-slate-800 truncate pr-16">{payment.supplierName}</h4>
-                <div className="mt-1 flex flex-col gap-1 items-start">
-                  <span className="text-[9px] text-[#4f3df5] font-bold bg-indigo-50 rounded-lg px-2 py-0.5 inline-block border border-indigo-100">
-                    Debit Payment
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[#f8faff] rounded-2xl p-4 space-y-3 border border-slate-50">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Debit (Amt Paid)</span>
-                <span className="text-xl font-bold text-[#029b6c]">₹{(payment.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-              </div>
-              
-              {/* Bank style meta fields */}
-              <div className="space-y-1.5 pt-2 border-t border-slate-200/40 text-[11px] text-slate-600">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Txn Date:</span>
-                  <span className="font-mono font-bold text-slate-700">{payment.txnDate || payment.date} {payment.txnTime || ''}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Value Date:</span>
-                  <span className="font-mono font-semibold text-slate-700">{payment.valueDate || payment.date}</span>
-                </div>
-                {payment.refNo && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Ref. No:</span>
-                    <span className="font-mono font-semibold text-indigo-600">{payment.refNo}</span>
-                  </div>
-                )}
-                {payment.particulars && (
-                  <div className="pt-1.5">
-                    <span className="text-slate-400 block mb-0.5">Particulars:</span>
-                    <span className="font-bold text-slate-800 block break-words bg-white/70 border border-slate-100 rounded px-1.5 py-1 text-[10px]">
-                      {payment.particulars}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100">
-                <div className="flex items-center gap-1.5 text-slate-400">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span className="font-mono text-[10px]">{new Date(payment.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Wallet className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="bg-white border border-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-slate-600 uppercase">
-                    {payment.paymentMode}
-                  </span>
-                </div>
-              </div>
-              {payment.notes && (
-                <p className="text-[11px] text-slate-500 line-clamp-2 italic pt-2 border-t border-slate-100/50">
-                  Notes: {payment.notes}
-                </p>
+      {/* Table List Line Items */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-100 text-[10px] uppercase font-black text-slate-400 tracking-wider">
+                <th className="py-4 px-5">Receipt & Ref ID</th>
+                <th className="py-4 px-5">Supplier Name & Particulars</th>
+                <th className="py-4 px-5">Txn Date</th>
+                <th className="py-4 px-5">Payment Mode</th>
+                <th className="py-4 px-5 text-right">Debit (Amount Paid)</th>
+                <th className="py-4 px-5 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {filteredPayments.map((payment, idx) => {
+                return (
+                  <tr key={`supp-pay-${payment.id}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-5 align-top">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 bg-indigo-50 rounded-xl flex items-center justify-center text-[#4f3df5] shrink-0">
+                          <ArrowUpCircle className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <span className="font-mono font-bold text-slate-800 text-xs block">{payment.id}</span>
+                          {payment.refNo ? (
+                            <span className="text-[10px] font-mono text-indigo-600 block">Ref: {payment.refNo}</span>
+                          ) : (
+                            <span className="text-[9px] text-[#4f3df5] font-bold bg-indigo-50 rounded px-1.5 py-0.5 inline-block border border-indigo-100">
+                              Debit Payment
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 align-top">
+                      <h4 className="font-bold text-slate-800 text-sm">{payment.supplierName}</h4>
+                      {payment.particulars && (
+                        <p className="text-[11px] text-slate-600 mt-1 font-medium bg-slate-50 border border-slate-100 rounded-lg px-2 py-0.5 inline-block max-w-sm truncate">
+                          {payment.particulars}
+                        </p>
+                      )}
+                      {payment.notes && (
+                        <p className="text-[10px] text-slate-400 italic mt-0.5">Notes: {payment.notes}</p>
+                      )}
+                    </td>
+                    <td className="py-4 px-5 align-top">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-slate-700">{payment.txnDate || payment.date}</span>
+                        {payment.txnTime && <span className="font-mono text-[10px] text-slate-400">({payment.txnTime})</span>}
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 align-top">
+                      <span className="bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-700 uppercase tracking-wider inline-flex items-center gap-1.5">
+                        <Wallet className="w-3 h-3 text-slate-400" />
+                        {payment.paymentMode || 'NET BANKING'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-5 text-right align-top">
+                      <span className="text-base font-bold text-[#029b6c] block font-mono">
+                        ₹{(payment.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </td>
+                    <td className="py-4 px-5 text-center align-top">
+                      <div className="flex items-center justify-center gap-1">
+                        <button 
+                          onClick={() => { 
+                            setEditingId(payment.id); 
+                            setFormData({
+                              ...payment,
+                              txnDate: payment.txnDate || payment.date,
+                              txnTime: payment.txnTime || "12:00:00",
+                              particulars: payment.particulars || '',
+                              refNo: payment.refNo || ''
+                            }); 
+                            setIsFormOpen(true); 
+                          }}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                          title="Edit Record"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => setDeleteConfirmId(payment.id)} 
+                          className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all cursor-pointer"
+                          title="Delete Record"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredPayments.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center">
+                    <CheckCircle2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                    <p className="text-slate-400 font-medium text-xs">No supplier payment records found.</p>
+                  </td>
+                </tr>
               )}
-            </div>
-          </div>
-        ))}
-        {filteredPayments.length === 0 && (
-          <div className="col-span-full py-20 text-center bg-white rounded-[32px] border border-dashed border-slate-200">
-            <CheckCircle2 className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-400 font-medium">No supplier payment records found.</p>
-          </div>
-        )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Record Payment modal */}
@@ -705,29 +744,103 @@ export default function SupplierReceipts() {
                 </div>
               </div>
 
-              {/* Supplier Selector */}
-              <div className="space-y-2">
+              {/* Searchable Supplier Dropdown */}
+              <div className="space-y-2 relative">
                 <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Select Supplier</label>
-                <select 
-                  required
-                  id="select-supplier"
-                  className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm appearance-none cursor-pointer bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23475569%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_1.5rem_center] bg-no-repeat pr-12"
-                  value={formData.supplierId || ''}
-                  onChange={(e) => {
-                    const suppId = e.target.value;
-                    setFormData({
-                      ...formData, 
-                      supplierId: suppId,
-                    });
-                  }}
+                
+                {/* Trigger / Display Box */}
+                <div 
+                  onClick={() => setIsSupplierDropdownOpen(!isSupplierDropdownOpen)}
+                  className="w-full bg-[#f8faff] rounded-2xl py-3.5 px-6 text-sm font-bold text-slate-700 shadow-sm border border-slate-200/60 cursor-pointer flex items-center justify-between hover:border-indigo-300 transition-all"
                 >
-                  <option value="">-- Choose a Supplier --</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.id})
-                    </option>
-                  ))}
-                </select>
+                  <div className="flex items-center gap-2 truncate">
+                    <Users className="w-4 h-4 text-slate-400 shrink-0" />
+                    {formData.supplierId ? (
+                      <span>
+                        {suppliers.find(s => s.id === formData.supplierId)?.name || 'Selected Supplier'} 
+                        <span className="text-slate-400 font-normal ml-1.5 text-xs">({formData.supplierId})</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium">-- Choose a Supplier --</span>
+                    )}
+                  </div>
+                  <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0", isSupplierDropdownOpen && "rotate-180")} />
+                </div>
+
+                {/* Dropdown Popup Menu */}
+                {isSupplierDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-2 z-50 bg-white rounded-2xl shadow-xl border border-slate-100 p-2 space-y-2 animate-in fade-in-50 zoom-in-95 duration-150">
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input 
+                        type="text"
+                        autoFocus
+                        placeholder="Search supplier by name or ID..."
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-3 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                        value={supplierSearchQuery}
+                        onChange={(e) => setSupplierSearchQuery(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Supplier List Options */}
+                    <div className="max-h-52 overflow-y-auto space-y-0.5 divide-y divide-slate-50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData({ ...formData, supplierId: '' });
+                          setIsSupplierDropdownOpen(false);
+                          setSupplierSearchQuery('');
+                        }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer",
+                          !formData.supplierId ? "bg-indigo-50 text-indigo-600 font-bold" : "text-slate-500 hover:bg-slate-50"
+                        )}
+                      >
+                        <span>-- Choose a Supplier --</span>
+                      </button>
+
+                      {suppliers
+                        .filter(s => 
+                          !supplierSearchQuery || 
+                          (s.name && s.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())) ||
+                          (s.id && s.id.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
+                        )
+                        .map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, supplierId: s.id });
+                              setIsSupplierDropdownOpen(false);
+                              setSupplierSearchQuery('');
+                            }}
+                            className={cn(
+                              "w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors flex items-center justify-between cursor-pointer",
+                              formData.supplierId === s.id ? "bg-indigo-50 text-[#4f3df5] font-bold" : "text-slate-700 hover:bg-slate-50 font-medium"
+                            )}
+                          >
+                            <div>
+                              <p className="font-bold text-slate-800">{s.name}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{s.id}</p>
+                            </div>
+                            {formData.supplierId === s.id && (
+                              <CheckCircle2 className="w-4 h-4 text-[#4f3df5] shrink-0" />
+                            )}
+                          </button>
+                        ))
+                      }
+
+                      {suppliers.filter(s => 
+                        !supplierSearchQuery || 
+                        (s.name && s.name.toLowerCase().includes(supplierSearchQuery.toLowerCase())) ||
+                        (s.id && s.id.toLowerCase().includes(supplierSearchQuery.toLowerCase()))
+                      ).length === 0 && (
+                        <p className="text-center text-xs text-slate-400 py-3 font-medium">No matching suppliers found</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Outstanding Balance card */}
@@ -793,30 +906,16 @@ export default function SupplierReceipts() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Value Date */}
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Value Date</label>
-                  <input 
-                    required
-                    type="date" 
-                    className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                    value={formData.valueDate || ''}
-                    onChange={(e) => setFormData({...formData, valueDate: e.target.value})}
-                  />
-                </div>
-
-                {/* Ref Number */}
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Ref. No. / Chq. No.</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. 12341740263"
-                    className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold font-mono text-slate-700 shadow-sm"
-                    value={formData.refNo || ''}
-                    onChange={(e) => setFormData({...formData, refNo: e.target.value})}
-                  />
-                </div>
+              {/* Ref Number */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Ref. No. / Chq. No.</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 12341740263"
+                  className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold font-mono text-slate-700 shadow-sm"
+                  value={formData.refNo || ''}
+                  onChange={(e) => setFormData({...formData, refNo: e.target.value})}
+                />
               </div>
 
               {/* Particulars (Pre-filled and fully editable) */}
@@ -1102,8 +1201,8 @@ export default function SupplierReceipts() {
                           )}
 
                           {/* Dynamic transaction list (Debits and Credits) */}
-                          {ledgerData.txns.map((tx) => (
-                            <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
+                          {ledgerData.txns.map((tx, idx) => (
+                            <tr key={`supp-tx-${tx.id}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
                               <td className="py-3 px-4 font-mono text-slate-600">
                                 <div>{tx.txnDate}</div>
                                 {tx.txnTime && (

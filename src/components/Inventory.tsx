@@ -503,6 +503,33 @@ export default function Inventory() {
     }
   };
 
+  const updateSupplierBalanceForPurchase = (supplierId: string | undefined, amountChange: number) => {
+    if (!supplierId || amountChange === 0) return;
+    const savedSupps = localStorage.getItem('inven_suppliers');
+    if (savedSupps) {
+      try {
+        const supps = JSON.parse(savedSupps);
+        const updated = supps.map((s: any) => {
+          if (s.id === supplierId) {
+            const currentOB = s.opBalance !== undefined ? Number(s.opBalance) : (s.openingBalance !== undefined ? Number(s.openingBalance) : 0);
+            const newOB = currentOB + amountChange;
+            return {
+              ...s,
+              opBalance: newOB,
+              openingBalance: newOB
+            };
+          }
+          return s;
+        });
+        localStorage.setItem('inven_suppliers', JSON.stringify(updated));
+        window.dispatchEvent(new Event('inven_localstorage_sync'));
+        setSuppliers(updated);
+      } catch (e) {
+        console.error('Error updating supplier balance for purchase:', e);
+      }
+    }
+  };
+
   const openPaymentDialog = (item: InventoryItem) => {
     const grossAmount = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
     const previousPaid = Number(item.paidAmount) || 0;
@@ -778,6 +805,9 @@ export default function Inventory() {
         );
       }
 
+      const newTotalAdd = savedNewItems.reduce((sum, item) => sum + (item.totalCost || 0), 0);
+      updateSupplierBalanceForPurchase(formData.supplierId, newTotalAdd);
+
       saveToLocal([...savedNewItems, ...items]);
     }
 
@@ -821,6 +851,10 @@ export default function Inventory() {
 
   const confirmDelete = () => {
     if (deleteId) {
+      const itemToDelete = items.find(i => i.id === deleteId);
+      if (itemToDelete) {
+        updateSupplierBalanceForPurchase(itemToDelete.supplierId, -(itemToDelete.totalCost || 0));
+      }
       saveToLocal(items.filter(i => i.id !== deleteId));
       setDeleteId(null);
     }
@@ -1066,15 +1100,14 @@ export default function Inventory() {
                   <th className="px-6 py-4">Payment Mode</th>
                   <th className="px-6 py-4">Due Date</th>
                   <th className="px-6 py-4">Net Amount</th>
-                  <th className="px-6 py-4">Payment Status</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               )}
             </thead>
             <tbody className="divide-y divide-slate-50">
               {activeTab === 'purchase_return' ? (
-                displayedItems.map((item) => (
-                  <tr key={item.id} className="group hover:bg-slate-50/30 transition-colors animate-in fade-in">
+                displayedItems.map((item, idx) => (
+                  <tr key={`pr-${item.id}-${idx}`} className="group hover:bg-slate-50/30 transition-colors animate-in fade-in">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-50 text-rose-600">
@@ -1133,14 +1166,14 @@ export default function Inventory() {
                   </tr>
                 ))
               ) : (
-                displayedItems.map((item) => {
+                displayedItems.map((item, idx) => {
                   const netAmount = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
                   const paidAmt = Number(item.paidAmount) || 0;
                   const pendingAmt = Math.max(0, netAmount - paidAmt);
                   
                   return (
                     <tr 
-                      key={item.id} 
+                      key={`inv-item-${item.id}-${idx}`} 
                       className={cn(
                         "group hover:bg-slate-50/30 transition-colors",
                         item.quantity <= threshold ? "bg-rose-50/40" : ""
@@ -1217,24 +1250,6 @@ export default function Inventory() {
                           </p>
                         )}
                       </td>
-                      <td className="px-6 py-5">
-                        <div className="flex flex-col gap-1 w-fit">
-                          <span className={cn(
-                            "text-[9px] font-bold px-2 py-0.5 rounded-lg border uppercase tracking-wider text-center",
-                            item.paymentStatus === 'Paid' 
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
-                              : item.paymentStatus === 'Partially Paid'
-                              ? "bg-blue-50 text-blue-700 border-blue-100"
-                              : "bg-amber-50 text-amber-700 border-amber-100"
-                          )}>
-                            {item.paymentStatus || 'Unpaid'}
-                          </span>
-                          <div className="text-[10px] font-medium text-slate-400 divide-x divide-slate-200 flex gap-1.5 items-center">
-                            <span>Paid: <span className="font-semibold text-slate-600">₹{paidAmt.toLocaleString()}</span></span>
-                            <span className="pl-1.5">Pending: <span className={cn("font-bold", pendingAmt > 0 ? "text-rose-600" : "text-slate-500")}>₹{pendingAmt.toLocaleString()}</span></span>
-                          </div>
-                        </div>
-                      </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-1.5">
                           {item.quantity > 0 && (
@@ -1310,8 +1325,8 @@ export default function Inventory() {
                               }}
                             >
                               <option value="" disabled>-- Select a Lot to Return --</option>
-                              {items.filter(item => item.quantity > 0).map(item => (
-                                <option key={item.id} value={item.id}>
+                              {items.filter(item => item.quantity > 0).map((item, idx) => (
+                                <option key={`opt-${item.id}-${idx}`} value={item.id}>
                                   {item.id} - {item.supplierName} ({item.quantity} {item.unit})
                                 </option>
                               ))}
@@ -3026,8 +3041,8 @@ export default function Inventory() {
                           (selectedSupplier && (item.supplierName === selectedSupplier.name || item.supplierName === selectedSupplier.companyName));
                         return isMatch && item.quantity > 0;
                       })
-                      .map(item => (
-                        <option key={item.id} value={item.id}>
+                      .map((item, idx) => (
+                        <option key={`opt-supplier-lot-${item.id}-${idx}`} value={item.id}>
                           Lot {item.id} - {item.fabricType || item.rawMaterialType} ({item.quantity} {item.unit}) - Price: ₹{item.pricePerMeter}/unit - Date: {item.entryDate}
                         </option>
                       ))
@@ -3384,12 +3399,12 @@ export default function Inventory() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {items.map((item) => {
+                        {items.map((item, idx) => {
                           const totalCost = (item.pricePerMeter || 0) * (item.quantity || 0);
                           const paidAmt = Number(item.paidAmount) || 0;
                           const balance = Math.max(0, totalCost - paidAmt);
                           return (
-                            <tr key={item.id} className="text-slate-700 hover:bg-slate-50/50">
+                            <tr key={`print-row-${item.id}-${idx}`} className="text-slate-700 hover:bg-slate-50/50">
                               <td className="py-2.5 font-mono text-[10px] font-bold">
                                 <button
                                   type="button"
@@ -3569,14 +3584,14 @@ export default function Inventory() {
                             item.supplierId === selectedSupplierDetails.id || 
                             item.supplierName === selectedSupplierDetails.name || 
                             item.supplierName === selectedSupplierDetails.companyName
-                          ).map((item) => {
+                          ).map((item, idx) => {
                             const lotCost = item.totalCost || ((item.pricePerMeter || 0) * (item.quantity || 0));
                             const lotPaid = Number(item.paidAmount) || 0;
                             const lotPending = Math.max(0, lotCost - lotPaid);
                             const lotStatus = lotPaid >= lotCost ? 'Paid' : (lotPaid > 0 ? 'Partially Paid' : 'Unpaid');
 
                             return (
-                              <div key={item.id} className="bg-white rounded-xl p-4 border border-slate-100 flex justify-between items-center hover:border-indigo-100 transition-colors">
+                              <div key={`supp-hist-${item.id}-${idx}`} className="bg-white rounded-xl p-4 border border-slate-100 flex justify-between items-center hover:border-indigo-100 transition-colors">
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono text-xs font-extrabold text-slate-800">{item.id}</span>
