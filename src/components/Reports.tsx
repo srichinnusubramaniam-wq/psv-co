@@ -24,9 +24,135 @@ import {
   Layers,
   Clock,
   History,
-  Trash2
+  Trash2,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
+
+interface SearchableDropdownProps {
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  placeholder?: string;
+  allOptionLabel?: string;
+}
+
+const SearchableFilterSelect: React.FC<SearchableDropdownProps> = ({
+  value,
+  onChange,
+  options,
+  placeholder = "All Product Descriptions",
+  allOptionLabel = "All Product Descriptions"
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options;
+    const q = search.toLowerCase();
+    return options.filter(o => o.toLowerCase().includes(q));
+  }, [options, search]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all flex items-center justify-between gap-1 text-left cursor-pointer"
+      >
+        <span className="truncate">{value === 'All' ? allOptionLabel : value}</span>
+        <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200", isOpen && "rotate-180")} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-[100] left-0 right-0 top-full mt-1 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 space-y-2 animate-in fade-in zoom-in-95 duration-150 min-w-[220px]">
+          <div className="relative flex items-center">
+            <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search description..."
+              autoFocus
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 pl-8 pr-7 text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-colors"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-52 overflow-y-auto space-y-0.5 custom-scrollbar pr-1">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('All');
+                setIsOpen(false);
+                setSearch('');
+              }}
+              className={cn(
+                "w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center justify-between transition-colors",
+                value === 'All'
+                  ? "bg-indigo-50 text-indigo-700 font-bold"
+                  : "text-slate-700 hover:bg-slate-50"
+              )}
+            >
+              <span className="truncate">{allOptionLabel}</span>
+              {value === 'All' && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0 ml-1" />}
+            </button>
+
+            {filtered.map((opt) => {
+              const isSelected = value === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt);
+                    setIsOpen(false);
+                    setSearch('');
+                  }}
+                  className={cn(
+                    "w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center justify-between transition-colors",
+                    isSelected
+                      ? "bg-indigo-50 text-indigo-700 font-bold"
+                      : "text-slate-700 hover:bg-slate-50"
+                  )}
+                >
+                  <span className="truncate">{opt}</span>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0 ml-1" />}
+                </button>
+              );
+            })}
+
+            {filtered.length === 0 && (
+              <div className="text-[11px] text-slate-400 text-center font-medium py-2">
+                No matching description
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 type ReportType = 'sales' | 'expenses' | 'income' | 'inventory' | 'production' | 'supplier' | 'godown';
 
@@ -137,6 +263,7 @@ export default function Reports() {
   const [godowns, setGodowns] = useState<any[]>([]);
   const [selectedGodown, setSelectedGodown] = useState<string>('All');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('All');
+  const [selectedSupplierProductDesc, setSelectedSupplierProductDesc] = useState<string>('All');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('All');
   const [companyName, setCompanyName] = useState('P.S.V & CO');
   const [selectedLedgerType, setSelectedLedgerType] = useState<string>('All');
@@ -416,11 +543,12 @@ export default function Reports() {
     const filtered = inventory.filter(item => {
       const matchRange = isWithinRange(item.entryDate);
       const matchSupplier = selectedSupplier === 'All' || item.supplierName === selectedSupplier;
+      const matchProductDesc = selectedSupplierProductDesc === 'All' || (item.fabricType && item.fabricType.trim() === selectedSupplierProductDesc);
       const matchSearch = searchQuery === '' ||
         item.supplierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.fabricType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.fabricType && item.fabricType.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (item.id && item.id.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchRange && matchSupplier && matchSearch;
+      return matchRange && matchSupplier && matchProductDesc && matchSearch;
     });
 
     const summary = filtered.reduce((acc, item) => {
@@ -442,7 +570,32 @@ export default function Reports() {
     });
 
     return { items: filtered, summary };
-  }, [inventory, startDate, endDate, selectedSupplier, searchQuery]);
+  }, [inventory, startDate, endDate, selectedSupplier, selectedSupplierProductDesc, searchQuery]);
+
+  // Derived unique product descriptions list for Supplier Ledger filter
+  const availableSupplierProductDescriptions = useMemo(() => {
+    const listSet = new Set<string>();
+    inventory.forEach(item => {
+      if (item.fabricType && item.fabricType.trim()) {
+        listSet.add(item.fabricType.trim());
+      }
+    });
+    try {
+      const savedProducts = JSON.parse(localStorage.getItem('inven_product_master') || '[]');
+      if (Array.isArray(savedProducts)) {
+        savedProducts.forEach((pm: any) => {
+          if (pm.description && pm.description.trim()) {
+            listSet.add(pm.description.trim());
+          } else if (pm.name && pm.name.trim()) {
+            listSet.add(pm.name.trim());
+          }
+        });
+      }
+    } catch (e) {
+      console.error('Failed to parse product master for descriptions', e);
+    }
+    return Array.from(listSet).sort((a, b) => a.localeCompare(b));
+  }, [inventory]);
 
 
   // Derived unique item/models list for Godown Stock Ledger filter
@@ -968,7 +1121,7 @@ export default function Reports() {
 
           <div className={cn(
             "grid grid-cols-1 gap-6 items-end",
-            selectedReport === 'godown' ? "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" : (selectedReport === 'supplier' || selectedReport === 'income') ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-3"
+            selectedReport === 'godown' ? "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" : selectedReport === 'supplier' ? "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" : selectedReport === 'income' ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2 lg:grid-cols-3"
           )}>
             <div className="space-y-1.5">
               <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
@@ -1047,21 +1200,35 @@ export default function Reports() {
             )}
 
             {selectedReport === 'supplier' && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
-                  <Users className="w-3 h-3 text-slate-400" /> Supplier Vendor
-                </label>
-                <select
-                  value={selectedSupplier}
-                  onChange={(e) => setSelectedSupplier(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all"
-                >
-                  <option value="All">All Suppliers</option>
-                  {suppliers.map(s => (
-                    <option key={s.id || s.name} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                    <Users className="w-3 h-3 text-slate-400" /> Supplier Vendor
+                  </label>
+                  <select
+                    value={selectedSupplier}
+                    onChange={(e) => setSelectedSupplier(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all cursor-pointer"
+                  >
+                    <option value="All">All Suppliers</option>
+                    {suppliers.map(s => (
+                      <option key={s.id || s.name} value={s.name}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
+                    <Package className="w-3 h-3 text-slate-400" /> Product Description
+                  </label>
+                  <SearchableFilterSelect
+                    value={selectedSupplierProductDesc}
+                    onChange={(val) => setSelectedSupplierProductDesc(val)}
+                    options={availableSupplierProductDescriptions}
+                    allOptionLabel="All Product Descriptions"
+                  />
+                </div>
+              </>
             )}
 
             {selectedReport === 'income' && (
