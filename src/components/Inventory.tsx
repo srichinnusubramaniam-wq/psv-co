@@ -1399,9 +1399,13 @@ export default function Inventory() {
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-bold text-slate-800">
-                            {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
-                          </span>
+                          {item.quantity > 0 ? (
+                            <span className="text-sm font-bold text-slate-800">
+                              {item.quantity} {item.unit === 'KGs' ? 'KGs' : (item.unit === 'Meters' ? 'm' : 'pcs')}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-medium text-xs">-</span>
+                          )}
                           {item.pricePerMeter > 0 && (
                             <span className="text-[10px] text-slate-400 font-semibold">
                               @ ₹{item.pricePerMeter}/{item.unit === 'KGs' ? 'kg' : (item.unit === 'Meters' ? 'm' : 'pc')}
