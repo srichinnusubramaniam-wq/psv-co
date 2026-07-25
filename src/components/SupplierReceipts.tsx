@@ -214,6 +214,17 @@ export default function SupplierReceipts() {
     
     const amount = Number(formData.amount) || 0;
 
+    const currSelectedSupp = formData.supplierId ? suppliers.find(s => s && s.id === formData.supplierId) : null;
+    if (currSelectedSupp) {
+      const suppBal = currSelectedSupp.opBalance !== undefined ? Number(currSelectedSupp.opBalance) : (currSelectedSupp.openingBalance !== undefined ? Number(currSelectedSupp.openingBalance) : 0);
+      const oldRec = editingId ? payments.find(r => r.id === editingId) : null;
+      const maxAllowed = oldRec ? (suppBal + (oldRec.amount || 0)) : suppBal;
+      if (maxAllowed >= 0 && amount > maxAllowed) {
+        alert(`Debit amount cannot be more than current outstanding balance (₹${maxAllowed.toLocaleString('en-IN', { minimumFractionDigits: 2 })}).`);
+        return;
+      }
+    }
+
     // Use current time if time is not specified
     const nowTime = new Date().toLocaleTimeString('en-GB', { hour12: false });
 
@@ -353,9 +364,12 @@ export default function SupplierReceipts() {
     ? (selectedSupp.opBalance !== undefined ? Number(selectedSupp.opBalance) : (selectedSupp.openingBalance !== undefined ? Number(selectedSupp.openingBalance) : 0))
     : 0;
 
+  const editingRecord = editingId ? payments.find(r => r.id === editingId) : null;
+  const maxDebitAllowed = editingRecord ? (activeSuppBalance + (editingRecord.amount || 0)) : activeSuppBalance;
+
   // Expected balance after subtracting the current input amount
   const inputAmount = Number(formData.amount) || 0;
-  const expectedBalanceAfterPayment = activeSuppBalance - inputAmount;
+  const expectedBalanceAfterPayment = maxDebitAllowed - inputAmount;
 
   // Metrics
   const totalPaid = supplierPayments.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
@@ -906,16 +920,33 @@ export default function SupplierReceipts() {
                 </div>
               </div>
 
-              {/* Ref Number */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Ref. No. / Chq. No.</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 12341740263"
-                  className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold font-mono text-slate-700 shadow-sm"
-                  value={formData.refNo || ''}
-                  onChange={(e) => setFormData({...formData, refNo: e.target.value})}
-                />
+              {/* Ref Number & Payment Mode */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Mode</label>
+                  <select 
+                    className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm appearance-none cursor-pointer bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23475569%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_1.5rem_center] bg-no-repeat pr-12"
+                    value={formData.paymentMode || 'Bank Transfer'}
+                    onChange={(e) => setFormData({...formData, paymentMode: e.target.value})}
+                  >
+                    <option>Bank Transfer</option>
+                    <option>Net Banking</option>
+                    <option>Cash</option>
+                    <option>UPI</option>
+                    <option>Cheque</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Ref. No. / Chq. No.</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. 12341740263"
+                    className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold font-mono text-slate-700 shadow-sm"
+                    value={formData.refNo || ''}
+                    onChange={(e) => setFormData({...formData, refNo: e.target.value})}
+                  />
+                </div>
               </div>
 
               {/* Particulars (Pre-filled and fully editable) */}
@@ -932,37 +963,32 @@ export default function SupplierReceipts() {
                 <span className="text-[10px] text-slate-400 px-1">This is generated automatically from mode/ref-no but you can customize it completely.</span>
               </div>
 
-              {/* Amount and Mode */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Debit Amount (Amount Given ₹)</label>
-                  <input 
-                    required
-                    id="input-amount"
-                    type="number" 
-                    step="any"
-                    min="0.01"
-                    className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm"
-                    value={formData.amount || ''}
-                    onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})}
-                    placeholder="Enter debit amount"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Payment Mode</label>
-                  <select 
-                    className="w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm appearance-none cursor-pointer bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23475569%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_1.5rem_center] bg-no-repeat pr-12"
-                    value={formData.paymentMode || 'Bank Transfer'}
-                    onChange={(e) => setFormData({...formData, paymentMode: e.target.value})}
-                  >
-                    <option>Bank Transfer</option>
-                    <option>Net Banking</option>
-                    <option>Cash</option>
-                    <option>UPI</option>
-                    <option>Cheque</option>
-                  </select>
-                </div>
+              {/* Debit Amount */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Debit Amount (Amount Given ₹)</label>
+                <input 
+                  required
+                  id="input-amount"
+                  type="number" 
+                  step="any"
+                  min="0.01"
+                  max={selectedSupp && maxDebitAllowed >= 0 ? maxDebitAllowed : undefined}
+                  className={cn(
+                    "w-full bg-[#f8faff] border-none rounded-2xl py-3.5 px-6 text-sm outline-none focus:ring-2 font-bold text-slate-700 shadow-sm transition-all",
+                    selectedSupp && maxDebitAllowed >= 0 && (Number(formData.amount) || 0) > maxDebitAllowed
+                      ? "focus:ring-rose-500/20 ring-2 ring-rose-500/50 bg-rose-50/40 text-rose-700"
+                      : "focus:ring-indigo-500/10"
+                  )}
+                  value={formData.amount || ''}
+                  onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})}
+                  placeholder="Enter debit amount"
+                />
+                {selectedSupp && maxDebitAllowed >= 0 && (Number(formData.amount) || 0) > maxDebitAllowed && (
+                  <p className="text-xs font-bold text-rose-600 px-1 mt-1 flex items-center gap-1 animate-in fade-in">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                    Debit amount cannot be more than current outstanding balance (₹{maxDebitAllowed.toLocaleString('en-IN', { minimumFractionDigits: 2 })})
+                  </p>
+                )}
               </div>
 
               {/* Notes */}
@@ -988,7 +1014,8 @@ export default function SupplierReceipts() {
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3.5 rounded-2xl bg-[#4f3df5] text-white text-sm font-bold hover:bg-[#3b2cd4] transition-all active:scale-95 shadow-lg shadow-indigo-100 cursor-pointer"
+                  disabled={Boolean(selectedSupp && maxDebitAllowed >= 0 && (Number(formData.amount) || 0) > maxDebitAllowed)}
+                  className="flex-1 py-3.5 rounded-2xl bg-[#4f3df5] text-white text-sm font-bold hover:bg-[#3b2cd4] disabled:bg-slate-300 disabled:cursor-not-allowed transition-all active:scale-95 shadow-lg shadow-indigo-100 cursor-pointer"
                 >
                   Save Record
                 </button>

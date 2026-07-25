@@ -247,18 +247,18 @@ export default function ProductionUnits({
         const aModel = cleanModelStr(a.modelName || a.fabricType);
         const aGroup = cleanModelStr(a.productGroupName);
 
-        const isModelMatch = aModel && targetNorm && (
+        const isModelMatch = Boolean(aModel && targetNorm && (
           aModel === targetNorm || 
           aModel.includes(targetNorm) || 
           targetNorm.includes(aModel)
-        );
-        const isGroupMatch = groupNorm && aGroup && (
+        ));
+        const isGroupMatch = !groupNorm || !aGroup || Boolean(
           aGroup === groupNorm || 
           aGroup.includes(groupNorm) || 
           groupNorm.includes(aGroup)
         );
 
-        return isModelMatch || (groupNorm ? isGroupMatch : false);
+        return isModelMatch && isGroupMatch;
       })
       .reduce((sum, a) => sum + (a.quantity || 0), 0);
 
@@ -295,18 +295,18 @@ export default function ProductionUnits({
       const aModel = cleanModelStr(a.modelName || a.fabricType);
       const aGroup = cleanModelStr(a.productGroupName);
 
-      const isModelMatch = aModel && targetNorm && (
+      const isModelMatch = Boolean(aModel && targetNorm && (
         aModel === targetNorm || 
         aModel.includes(targetNorm) || 
         targetNorm.includes(aModel)
-      );
-      const isGroupMatch = groupNorm && aGroup && (
+      ));
+      const isGroupMatch = !groupNorm || !aGroup || Boolean(
         aGroup === groupNorm || 
         aGroup.includes(groupNorm) || 
         groupNorm.includes(aGroup)
       );
 
-      const match = isModelMatch || isGroupMatch;
+      const match = isModelMatch && isGroupMatch;
       if (match) {
         const currentQty = a.quantity || 0;
         const deduct = Math.min(currentQty, remainingToDeduct);
@@ -345,18 +345,18 @@ export default function ProductionUnits({
       const aModel = cleanModelStr(a.modelName || a.fabricType);
       const aGroup = cleanModelStr(a.productGroupName);
 
-      const isModelMatch = aModel && targetNorm && (
+      const isModelMatch = Boolean(aModel && targetNorm && (
         aModel === targetNorm || 
         aModel.includes(targetNorm) || 
         targetNorm.includes(aModel)
-      );
-      const isGroupMatch = groupNorm && aGroup && (
+      ));
+      const isGroupMatch = !groupNorm || !aGroup || Boolean(
         aGroup === groupNorm || 
         aGroup.includes(groupNorm) || 
         groupNorm.includes(aGroup)
       );
 
-      const match = isModelMatch || isGroupMatch;
+      const match = isModelMatch && isGroupMatch;
       if (match) {
         restored = true;
         const newQty = (a.quantity || 0) + qtyToRestore;
