@@ -23,7 +23,8 @@ import {
   Printer,
   RotateCcw,
   ChevronDown,
-  Check
+  Check,
+  Warehouse
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -1246,6 +1247,7 @@ export default function Inventory() {
                   <th className="px-6 py-4">Item Details</th>
                   <th className="px-6 py-4">Payment Mode</th>
                   <th className="px-6 py-4">Due Date</th>
+                  <th className="px-6 py-4">Godown</th>
                   <th className="px-6 py-4">Quantity</th>
                   <th className="px-6 py-4">Net Amount</th>
                   <th className="px-6 py-4 text-right">Actions</th>
@@ -1389,6 +1391,12 @@ export default function Inventory() {
                         ) : (
                           <span className="text-xs text-slate-400 font-medium">-</span>
                         )}
+                      </td>
+                      <td className="px-6 py-5">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/80 text-slate-700 text-xs font-bold border border-slate-200/50 uppercase tracking-wider">
+                          <Warehouse className="w-3.5 h-3.5 text-slate-400" />
+                          {item.godown || 'EDAPADY'}
+                        </span>
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-0.5">
@@ -2252,24 +2260,6 @@ export default function Inventory() {
                         {addDays(formData.entryDate || new Date().toISOString().split('T')[0], formData.creditDays)}
                       </div>
                     </div>
-
-                    <div className="space-y-2 animate-in fade-in duration-200">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-1.5">
-                        <Coins className="w-3.5 h-3.5 text-emerald-500" />
-                        Amount Paid Initially (₹)
-                      </label>
-                      <input 
-                        type="number" 
-                        placeholder="0.00"
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-emerald-700 shadow-sm"
-                        value={formData.paidAmount || ''}
-                        onChange={(e) => setFormData({...formData, paidAmount: parseFloat(e.target.value) || 0})}
-                        onWheel={(e) => e.currentTarget.blur()}
-                      />
-                      <p className="text-[10px] text-emerald-600/80 font-semibold px-1">
-                        Logs status to Expense ledger if &gt; ₹0.
-                      </p>
-                    </div>
                   </>
                 ) : (
                   <>
@@ -2741,25 +2731,6 @@ export default function Inventory() {
                       <div className="w-full bg-indigo-50 border border-indigo-100 rounded-2xl py-4 px-6 text-sm font-black text-indigo-700 shadow-sm flex items-center gap-2 h-[54px]">
                         ₹ {((formData.amount || 0) + (formData.cgst || 0) + (formData.sgst || 0) + (formData.igst || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </div>
-                    </div>
-
-                    {/* Amount Paid Initially */}
-                    <div className="space-y-2 md:col-span-1">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1 flex items-center gap-1.5">
-                        <Coins className="w-3.5 h-3.5 text-emerald-500" />
-                        Amount Paid Initially (₹)
-                      </label>
-                      <input 
-                        type="number" 
-                        placeholder="0.00"
-                        className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-emerald-500/10 font-bold text-emerald-700 shadow-sm"
-                        value={formData.paidAmount || ''}
-                        onChange={(e) => setFormData({...formData, paidAmount: parseFloat(e.target.value) || 0})}
-                        onWheel={(e) => e.currentTarget.blur()}
-                      />
-                      <p className="text-[10px] text-emerald-600/80 font-semibold px-1">
-                        Logs an automatic Expense entry if greater than ₹0.
-                      </p>
                     </div>
                   </>
                 )}
