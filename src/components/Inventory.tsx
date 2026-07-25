@@ -580,29 +580,6 @@ export default function Inventory() {
     setGodowns(savedGodowns);
   }, []);
 
-  useEffect(() => {
-    if (products.length > 0 && !editingId) {
-      const exists = products.some(p => p.description === formData.fabricType);
-      if (!exists && formData.rawMaterialType === 'cloth') {
-        setFormData(prev => ({
-          ...prev,
-          fabricType: products[0].description,
-          productGroupName: products[0].productGroupName
-        }));
-        setClothRows([
-          {
-            fabricType: products[0].description,
-            productGroupName: products[0].productGroupName || 'COLOUR BASANA',
-            quantity: 0,
-            pricePerMeter: 0,
-            amount: 0,
-            godown: godowns[0]?.name || 'UNIT-1'
-          }
-        ]);
-      }
-    }
-  }, [products, editingId, godowns]);
-
   const saveToLocal = (data: InventoryItem[]) => {
     setItems(data);
     localStorage.setItem('inven_inventory', JSON.stringify(data));
@@ -753,6 +730,24 @@ export default function Inventory() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (formData.rawMaterialType === 'cloth') {
+      for (let i = 0; i < clothRows.length; i++) {
+        const r = clothRows[i];
+        if (!r.fabricType) {
+          alert(`Please select a Product Description for Item #${i + 1}`);
+          return;
+        }
+        if (!r.productGroupName) {
+          alert(`Please select a Product Group for Item #${i + 1}`);
+          return;
+        }
+        if (!r.godown) {
+          alert(`Please select a Godown for Item #${i + 1}`);
+          return;
+        }
+      }
+    }
+
     const selectedSupplier = suppliers.find(s => s && s.id === formData.supplierId);
     const supplierName = selectedSupplier ? (selectedSupplier.name || selectedSupplier.companyName || 'Unknown') : 'Unknown';
 
@@ -966,8 +961,8 @@ export default function Inventory() {
   const resetForm = () => {
     setEditingId(null);
     setFormData({ 
-      fabricType: products[0]?.description || '', 
-      productGroupName: products[0]?.productGroupName || 'COLOUR BASANA',
+      fabricType: '', 
+      productGroupName: '',
       unit: 'Meters',
       entryDate: new Date().toISOString().split('T')[0],
       paidAmount: 0,
@@ -983,12 +978,12 @@ export default function Inventory() {
     });
     setClothRows([
       {
-        fabricType: products[0]?.description || '',
-        productGroupName: products[0]?.productGroupName || 'COLOUR BASANA',
+        fabricType: '',
+        productGroupName: '',
         quantity: 0,
         pricePerMeter: 0,
         amount: 0,
-        godown: godowns[0]?.name || 'UNIT-1'
+        godown: ''
       }
     ]);
   };
@@ -1393,10 +1388,14 @@ export default function Inventory() {
                         )}
                       </td>
                       <td className="px-6 py-5">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/80 text-slate-700 text-xs font-bold border border-slate-200/50 uppercase tracking-wider">
-                          <Warehouse className="w-3.5 h-3.5 text-slate-400" />
-                          {item.godown || 'EDAPADY'}
-                        </span>
+                        {item.godown ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/80 text-slate-700 text-xs font-bold border border-slate-200/50 uppercase tracking-wider">
+                            <Warehouse className="w-3.5 h-3.5 text-slate-400" />
+                            {item.godown}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-medium text-xs px-2">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex flex-col gap-0.5">
@@ -2509,7 +2508,7 @@ export default function Inventory() {
                               <select 
                                 required
                                 className="w-full bg-[#f1f5f9] lg:bg-white border border-slate-200/50 rounded-xl py-2.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
-                                value={row.productGroupName}
+                                value={row.productGroupName || ''}
                                 onChange={(e) => {
                                   const updatedRows = [...clothRows];
                                   updatedRows[idx] = {
@@ -2521,7 +2520,7 @@ export default function Inventory() {
                                   setFormData(updatedFormData);
                                 }}
                               >
-                                <option value="" disabled>Select Product Group Name</option>
+                                <option value="" disabled>Select Product Group</option>
                                 <option value="COLOUR BASANA">COLOUR BASANA</option>
                                 <option value="GREY CLOTH">GREY CLOTH</option>
                                 <option value="COTTON CLOTH">COTTON CLOTH</option>
@@ -2608,7 +2607,7 @@ export default function Inventory() {
                               <select 
                                 required
                                 className="w-full bg-[#f1f5f9] lg:bg-white border border-slate-200/50 rounded-xl py-2.5 px-4 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm"
-                                value={row.godown}
+                                value={row.godown || ''}
                                 onChange={(e) => {
                                   const updatedRows = [...clothRows];
                                   updatedRows[idx] = {
