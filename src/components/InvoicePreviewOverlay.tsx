@@ -70,13 +70,13 @@ const EditableInvoiceSelect = ({
   className?: string;
 }) => {
   return (
-    <div className="relative inline-block w-full">
+    <div className="relative inline-flex items-center">
       <span className="hidden print:inline font-bold text-slate-900">{value}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          "print:hidden w-full bg-slate-50/50 hover:bg-slate-100/80 focus:bg-white border-b border-dashed border-slate-300 rounded px-1.5 py-1 text-sm font-bold text-slate-800 outline-none transition-all h-[32px] cursor-pointer focus:ring-1 focus:ring-indigo-500/30 focus:border-indigo-500",
+          "print:hidden bg-slate-50/50 hover:bg-slate-100/80 focus:bg-white border-b border-dashed border-slate-300 rounded px-1 py-0.5 text-sm font-bold text-slate-800 outline-none transition-all h-[24px] cursor-pointer focus:ring-1 focus:ring-indigo-500/30 focus:border-indigo-500",
           className
         )}
       >
@@ -634,7 +634,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                               <>
                                 {/* CGST */}
                                 <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
-                                  <span className="flex items-center gap-1 font-bold">
+                                  <span className="inline-flex items-center gap-1 font-bold whitespace-nowrap">
                                     CGST
                                     <EditableInvoiceSelect
                                       value={`${previewInvoice.cgstPercent !== undefined ? previewInvoice.cgstPercent : 2.5}%`}
@@ -650,7 +650,7 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
 
                                 {/* SGST */}
                                 <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
-                                  <span className="flex items-center gap-1 font-bold">
+                                  <span className="inline-flex items-center gap-1 font-bold whitespace-nowrap">
                                     SGST
                                     <EditableInvoiceSelect
                                       value={`${previewInvoice.sgstPercent !== undefined ? previewInvoice.sgstPercent : 2.5}%`}
@@ -669,15 +669,15 @@ export const InvoicePreviewOverlay: React.FC<InvoicePreviewOverlayProps> = ({
                             {/* IGST (Interstate) */}
                             {!previewInvoice.isNonGst && !isTamilNadu && (
                               <div className="grid grid-cols-[1fr_100px] items-center text-slate-800">
-                                <span className="flex items-center gap-1 font-bold">
-                                  IGST @ (
+                                <span className="inline-flex items-center gap-0.5 font-bold whitespace-nowrap">
+                                  <span>IGST @ (</span>
                                   <EditableInvoiceSelect
                                     value={`${previewInvoice.igstPercent !== undefined ? previewInvoice.igstPercent : 5.0}%`}
                                     onChange={(val) => updatePreviewField('igstPercent', parseFloat(val.replace('%', '')) || 0)}
                                     options={['0%', '2%', '5%', '12%', '18%', '28%']}
-                                    className="w-12 bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
+                                    className="w-auto bg-transparent border-none p-0 h-auto text-slate-700 font-extrabold outline-none text-[11px]"
                                   />
-                                  )
+                                  <span>)</span>
                                 </span>
                                 <span className="font-black text-right text-[11px]">
                                   {(previewInvoice.igst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
