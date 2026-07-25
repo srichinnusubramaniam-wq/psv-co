@@ -24,7 +24,7 @@ export interface IncomeRecord {
   createdAt: string;
   customerId?: string;
   customerName?: string;
-  allocationType?: 'opening_balance' | 'invoice';
+  allocationType?: 'total_balance' | 'opening_balance' | 'invoice';
   invoiceId?: string;
   invoiceNo?: string;
 }
@@ -48,7 +48,7 @@ export default function Income() {
     categoryId: 'INC-CAT-002', // Default to Customer Payment
     date: new Date().toISOString().split('T')[0],
     paymentMode: 'Bank Transfer',
-    allocationType: 'opening_balance'
+    allocationType: 'total_balance'
   });
 
   const loadAllData = () => {
@@ -122,67 +122,145 @@ export default function Income() {
   // Adjust financial records (Customer Opening Balance or Invoice Pending Amount)
   const adjustCustomerBalanceAndInvoice = (
     customerId: string | undefined,
-    allocationType: 'opening_balance' | 'invoice' | undefined,
+    allocationType: 'total_balance' | 'opening_balance' | 'invoice' | undefined,
     invoiceId: string | undefined,
     amount: number,
     revert: boolean = false
   ) => {
-    if (!customerId) return;
+    if (!customerId || amount <= 0) return;
     
-    const factor = revert ? 1 : -1; // reverting adds back, applying subtracts
+    const savedCustomers = localStorage.getItem('inven_customers');
+    const savedInvoices = localStorage.getItem('inven_generated_invoices');
+    let custs = savedCustomers ? JSON.parse(savedCustomers) : [];
+    let invs = savedInvoices ? JSON.parse(savedInvoices) : [];
 
-    // 1. If applied to opening balance
-    if (allocationType === 'opening_balance' || !allocationType) {
-      const savedCustomers = localStorage.getItem('inven_customers');
-      if (savedCustomers) {
-        try {
-          const custs = JSON.parse(savedCustomers);
-          const updated = custs.map((c: any) => {
+    // 1. Total Balance Allocation (Applies to Opening Balance first, then unpaid invoices FIFO)
+    if (allocationType === 'total_balance') {
+      const custObj = custs.find((c: any) => c.id === customerId);
+      const selCustName = String(custObj?.name || '').toLowerCase().trim();
+
+      if (!revert) {
+        let remAmount = amount;
+        // Step A: Pay off opening balance first
+        custs = custs.map((c: any) => {
+          if (c.id === customerId) {
+            const currentOB = Number(c.openingBalance) || 0;
+            if (currentOB > 0) {
+              const obPaid = Math.min(currentOB, remAmount);
+              remAmount -= obPaid;
+              return { ...c, openingBalance: Math.max(0, currentOB - obPaid) };
+            }
+          }
+          return c;
+        });
+
+        // Step B: Pay remaining amount towards unpaid invoices (oldest to newest)
+        if (remAmount > 0) {
+          const custInvoices = invs
+            .filter((inv: any) => {
+              const invBuyer = String(inv.buyerName || '').toLowerCase().trim();
+              return (invBuyer.includes(selCustName) || selCustName.includes(invBuyer)) && inv.status !== 'Paid';
+            })
+            .sort((a: any, b: any) => new Date(a.date || a.createdAt || 0).getTime() - new Date(b.date || b.createdAt || 0).getTime());
+
+          for (const inv of custInvoices) {
+            if (remAmount <= 0) break;
+            const currentPaid = Number(inv.paidAmount) || 0;
+            const total = Number(inv.totalAmount) || 0;
+            const unpaid = Math.max(0, total - currentPaid);
+            if (unpaid > 0) {
+              const payAmt = Math.min(unpaid, remAmount);
+              remAmount -= payAmt;
+              const newPaid = currentPaid + payAmt;
+              let status: 'Paid' | 'Partially Paid' | 'Unpaid' = 'Unpaid';
+              if (newPaid >= total) status = 'Paid';
+              else if (newPaid > 0) status = 'Partially Paid';
+
+              invs = invs.map((i: any) => i.id === inv.id ? { ...i, paidAmount: newPaid, status } : i);
+            }
+          }
+        }
+      } else {
+        // REVERTING PAYMENT
+        let remAmount = amount;
+        // Step A: Revert from invoices first (newest to oldest)
+        const custInvoices = invs
+          .filter((inv: any) => {
+            const invBuyer = String(inv.buyerName || '').toLowerCase().trim();
+            return (invBuyer.includes(selCustName) || selCustName.includes(invBuyer)) && (Number(inv.paidAmount) || 0) > 0;
+          })
+          .sort((a: any, b: any) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime());
+
+        for (const inv of custInvoices) {
+          if (remAmount <= 0) break;
+          const currentPaid = Number(inv.paidAmount) || 0;
+          const revertAmt = Math.min(currentPaid, remAmount);
+          remAmount -= revertAmt;
+          const newPaid = Math.max(0, currentPaid - revertAmt);
+          const total = Number(inv.totalAmount) || 0;
+          let status: 'Paid' | 'Partially Paid' | 'Unpaid' = 'Unpaid';
+          if (newPaid >= total) status = 'Paid';
+          else if (newPaid > 0) status = 'Partially Paid';
+
+          invs = invs.map((i: any) => i.id === inv.id ? { ...i, paidAmount: newPaid, status } : i);
+        }
+
+        // Step B: Revert any remaining amount back to opening balance
+        if (remAmount > 0) {
+          custs = custs.map((c: any) => {
             if (c.id === customerId) {
               const currentOB = Number(c.openingBalance) || 0;
-              const newOB = currentOB + (amount * factor);
-              return { ...c, openingBalance: newOB };
+              return { ...c, openingBalance: currentOB + remAmount };
             }
             return c;
           });
-          localStorage.setItem('inven_customers', JSON.stringify(updated));
-        } catch (e) {
-          console.error('Error adjusting customer opening balance:', e);
         }
       }
+
+      localStorage.setItem('inven_customers', JSON.stringify(custs));
+      localStorage.setItem('inven_generated_invoices', JSON.stringify(invs));
+      setCustomers(custs);
+      setInvoices(invs);
+      return;
     }
 
-    // 2. If applied to invoice
-    if (allocationType === 'invoice' && invoiceId) {
-      const savedInvoices = localStorage.getItem('inven_generated_invoices');
-      if (savedInvoices) {
-        try {
-          const invs = JSON.parse(savedInvoices);
-          const updated = invs.map((inv: any) => {
-            if (inv.id === invoiceId) {
-              const currentPaid = Number(inv.paidAmount) || 0;
-              // Applying: paidAmount increases. Reverting: paidAmount decreases.
-              const paidChange = revert ? -amount : amount;
-              const newPaid = Math.max(0, currentPaid + paidChange);
-              
-              // Recalculate status
-              let status: 'Paid' | 'Partially Paid' | 'Unpaid' = 'Unpaid';
-              if (newPaid >= Number(inv.totalAmount)) {
-                status = 'Paid';
-              } else if (newPaid > 0) {
-                status = 'Partially Paid';
-              } else {
-                status = 'Unpaid';
-              }
-              return { ...inv, paidAmount: newPaid, status };
-            }
-            return inv;
-          });
-          localStorage.setItem('inven_generated_invoices', JSON.stringify(updated));
-        } catch (e) {
-          console.error('Error adjusting invoice paid amount:', e);
+    const factor = revert ? 1 : -1; // reverting adds back, applying subtracts
+
+    // 2. If applied to opening balance
+    if (allocationType === 'opening_balance' || !allocationType) {
+      const updated = custs.map((c: any) => {
+        if (c.id === customerId) {
+          const currentOB = Number(c.openingBalance) || 0;
+          const newOB = currentOB + (amount * factor);
+          return { ...c, openingBalance: newOB };
         }
-      }
+        return c;
+      });
+      localStorage.setItem('inven_customers', JSON.stringify(updated));
+      setCustomers(updated);
+    }
+
+    // 3. If applied to invoice
+    if (allocationType === 'invoice' && invoiceId) {
+      const updated = invs.map((inv: any) => {
+        if (inv.id === invoiceId) {
+          const currentPaid = Number(inv.paidAmount) || 0;
+          const paidChange = revert ? -amount : amount;
+          const newPaid = Math.max(0, currentPaid + paidChange);
+          let status: 'Paid' | 'Partially Paid' | 'Unpaid' = 'Unpaid';
+          if (newPaid >= Number(inv.totalAmount)) {
+            status = 'Paid';
+          } else if (newPaid > 0) {
+            status = 'Partially Paid';
+          } else {
+            status = 'Unpaid';
+          }
+          return { ...inv, paidAmount: newPaid, status };
+        }
+        return inv;
+      });
+      localStorage.setItem('inven_generated_invoices', JSON.stringify(updated));
+      setInvoices(updated);
     }
   };
 
@@ -196,7 +274,7 @@ export default function Income() {
       : null;
     
     const amount = Number(formData.amount) || 0;
-    const allocationType = formData.allocationType || 'opening_balance';
+    const allocationType = formData.allocationType || 'total_balance';
     const selectedInvoice = allocationType === 'invoice' && formData.invoiceId
       ? invoices.find(inv => inv.id === formData.invoiceId)
       : null;
@@ -272,7 +350,7 @@ export default function Income() {
       categoryId: customerPaymentCat ? customerPaymentCat.id : 'INC-CAT-002',
       date: new Date().toISOString().split('T')[0],
       paymentMode: 'Bank Transfer',
-      allocationType: 'opening_balance'
+      allocationType: 'total_balance'
     });
   };
 
@@ -468,12 +546,34 @@ export default function Income() {
                       value={formData.customerId || ''}
                       onChange={(e) => {
                         const custId = e.target.value;
-                        setFormData({
-                          ...formData,
-                          customerId: custId,
-                          invoiceId: '', // reset selected invoice when customer changes
-                          allocationType: 'opening_balance' // default allocation
-                        });
+                        const cust = customers.find(c => c && c.id === custId);
+                        if (cust) {
+                          const selCustName = String(cust.name || '').toLowerCase().trim();
+                          const custOB = Math.max(0, Number(cust.openingBalance) || 0);
+                          const custInvs = invoices.filter(inv => {
+                            if (!inv) return false;
+                            const bName = String(inv.buyerName || '').toLowerCase().trim();
+                            return (bName.includes(selCustName) || selCustName.includes(bName)) && inv.status !== 'Paid';
+                          });
+                          const unpaidSum = custInvs.reduce((sum, inv) => sum + Math.max(0, Number(inv.totalAmount) - (Number(inv.paidAmount) || 0)), 0);
+                          const totalRem = custOB + unpaidSum;
+
+                          setFormData({
+                            ...formData, 
+                            customerId: custId,
+                            invoiceId: '',
+                            allocationType: 'total_balance',
+                            amount: totalRem
+                          });
+                        } else {
+                          setFormData({
+                            ...formData, 
+                            customerId: '',
+                            invoiceId: '',
+                            allocationType: 'total_balance',
+                            amount: 0
+                          });
+                        }
                       }}
                     >
                       <option value="" disabled>Choose customer...</option>
@@ -488,15 +588,14 @@ export default function Income() {
                     const outstandingInvoices = invoices.filter(inv => {
                       if (!inv) return false;
                       
-                      const invBuyerName = (inv.buyer?.name || '').trim().toUpperCase();
-                      const selCustName = (selectedCust?.name || '').trim().toUpperCase();
-                      const invCustId = (inv.customerId || '').trim().toUpperCase();
-                      const selCustId = (selectedCust?.id || '').trim().toUpperCase();
+                      const invBuyerName = (inv.buyer?.name || inv.buyerName || '').trim().toLowerCase();
+                      const selCustName = (selectedCust?.name || '').trim().toLowerCase();
+                      const invCustId = (inv.customerId || '').trim().toLowerCase();
+                      const selCustId = (selectedCust?.id || '').trim().toLowerCase();
                       
                       const isMatchingCustomer = 
                         (invBuyerName === selCustName && invBuyerName !== '') || 
                         (invCustId === selCustId && invCustId !== '') ||
-                        (invBuyerName.replace(/\(.*\)/g, '').trim() === selCustName.replace(/\(.*\)/g, '').trim() && invBuyerName !== '') ||
                         (invBuyerName.includes(selCustName) && selCustName !== '') ||
                         (selCustName.includes(invBuyerName) && invBuyerName !== '');
                       
@@ -506,86 +605,30 @@ export default function Income() {
                       return isMatchingCustomer && isUnpaid && hasBalance;
                     });
 
+                    const custOB = Math.max(0, Number(selectedCust?.openingBalance) || 0);
+                    const unpaidInvoicesSum = outstandingInvoices.reduce((sum, inv) => {
+                      const originalRecAmount = editingId && formData.invoiceId === inv.id ? (formData.amount || 0) : 0;
+                      const unpaid = Number(inv.totalAmount) - (Number(inv.paidAmount) || 0) + originalRecAmount;
+                      return sum + (unpaid > 0 ? unpaid : 0);
+                    }, 0);
+                    const totalRemainingAmount = custOB + unpaidInvoicesSum;
+
                     return (
-                      <div className="bg-[#f4f7fc]/90 p-6 rounded-[24px] border border-indigo-50/50 space-y-4 shadow-sm">
-                        <div className="flex items-center justify-between text-sm font-semibold text-slate-500">
-                          <span>Opening Balance:</span>
-                          <span className="font-bold text-slate-800">
-                            ₹{(selectedCust?.openingBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </span>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Payment Allocation</label>
-                          <div className="grid grid-cols-2 gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setFormData({ ...formData, allocationType: 'opening_balance', invoiceId: '' })}
-                              className={cn(
-                                "py-3 px-4 rounded-xl text-xs font-bold border transition-all text-center shadow-sm",
-                                formData.allocationType === 'opening_balance' || !formData.allocationType
-                                  ? "bg-[#4f3df5] border-[#4f3df5] text-white shadow-indigo-100"
-                                  : "bg-white border-[#d2dbec] text-[#5c6e83] hover:bg-slate-50"
-                              )}
-                            >
-                              Opening Balance
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (outstandingInvoices.length === 0) {
-                                  alert("This customer has no unpaid invoices.");
-                                  return;
-                                }
-                                setFormData({ ...formData, allocationType: 'invoice' });
-                              }}
-                              className={cn(
-                                "py-3 px-4 rounded-xl text-xs font-bold border transition-all text-center shadow-sm",
-                                formData.allocationType === 'invoice'
-                                  ? "bg-[#4f3df5] border-[#4f3df5] text-white shadow-indigo-100"
-                                  : "bg-white border-[#d2dbec] text-[#5c6e83] hover:bg-slate-50"
-                              )}
-                            >
-                              Specific Invoice ({outstandingInvoices.length})
-                            </button>
+                      <div className="bg-[#f4f7fc]/90 p-4 rounded-[24px] border border-indigo-50/50 shadow-sm">
+                        
+                        {/* Total Remaining Balance Header Box */}
+                        <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-4 rounded-2xl shadow-sm flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-200 block mb-0.5">Total Remaining Amount</span>
+                            <span className="text-2xl font-black tracking-tight">
+                              ₹{totalRemainingAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div className="text-right text-[11px] font-medium text-indigo-100 space-y-0.5">
+                            <div>Opening Balance: <span className="font-bold text-white">₹{custOB.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
+                            <div>Unpaid Bills ({outstandingInvoices.length}): <span className="font-bold text-white">₹{unpaidInvoicesSum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
                           </div>
                         </div>
-
-                        {formData.allocationType === 'invoice' && (
-                          <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Choose Invoice / Bill Number</label>
-                            <select
-                              required
-                              className="w-full bg-white border border-[#d2dbec] rounded-2xl py-3 px-4 pr-10 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 font-bold text-slate-700 shadow-sm appearance-none cursor-pointer bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23475569%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:1.1rem_1.1rem] bg-[right_1rem_center] bg-no-repeat"
-                              value={formData.invoiceId || ''}
-                              onChange={(e) => {
-                                const invId = e.target.value;
-                                const inv = outstandingInvoices.find(i => i.id === invId);
-                                
-                                // Get the base amount change. If editing, we can add back the amount currently recorded to reflect its limit
-                                const originalRecAmount = editingId && formData.invoiceId === invId ? (formData.amount || 0) : 0;
-                                const unpaid = inv ? (Number(inv.totalAmount) - (Number(inv.paidAmount) || 0) + originalRecAmount) : 0;
-                                
-                                setFormData({
-                                  ...formData,
-                                  invoiceId: invId,
-                                  amount: unpaid // automatically set to remaining unpaid balance
-                                });
-                              }}
-                            >
-                              <option value="" disabled>Select Bill Number...</option>
-                              {outstandingInvoices.map(inv => {
-                                const originalRecAmount = editingId && formData.invoiceId === inv.id ? (formData.amount || 0) : 0;
-                                const unpaid = Number(inv.totalAmount) - (Number(inv.paidAmount) || 0) + originalRecAmount;
-                                return (
-                                  <option key={inv.id} value={inv.id}>
-                                    #{inv.invoiceNo} (Unpaid: ₹{unpaid.toLocaleString()})
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
-                        )}
                       </div>
                     );
                   })()}

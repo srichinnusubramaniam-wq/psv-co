@@ -311,7 +311,7 @@ export default function Inventory() {
   const [formData, setFormData] = useState<Partial<InventoryItem>>({
     fabricType: '',
     productGroupName: '',
-    unit: 'Meters',
+    unit: 'Pieces',
     entryDate: new Date().toISOString().split('T')[0],
     paidAmount: 0,
     paymentType: 'Cash',
@@ -764,7 +764,7 @@ export default function Inventory() {
           : (isProcessingKully 
             ? (formData.fabricType || 'Processing Kully') 
             : (formData.fabricType || 'Cotton'))));
-    const finalUnit = (isYarn || isJari || isSizingKully || isProcessingKully) ? 'KGs' : (formData.unit || 'Meters');
+    const finalUnit = (isYarn || isJari || isSizingKully || isProcessingKully) ? 'KGs' : (formData.unit || 'Pieces');
     const finalQty = formData.quantity || 0;
 
     const grossTotal = formData.amount !== undefined
@@ -894,7 +894,7 @@ export default function Inventory() {
             productGroupName: row.productGroupName,
             quantity: row.quantity,
             pricePerMeter: row.quantity > 0 ? parseFloat((rowTotalCost / row.quantity).toFixed(3)) : row.pricePerMeter,
-            unit: 'Meters' as const,
+            unit: 'Pieces' as const,
             entryDate: entryDateVal,
             createdAt: new Date().toISOString(),
             paymentStatus: rowStatus,
@@ -963,7 +963,7 @@ export default function Inventory() {
     setFormData({ 
       fabricType: '', 
       productGroupName: '',
-      unit: 'Meters',
+      unit: 'Pieces',
       entryDate: new Date().toISOString().split('T')[0],
       paidAmount: 0,
       paymentType: 'Cash',
@@ -2467,7 +2467,7 @@ export default function Inventory() {
                       <div className="hidden lg:grid grid-cols-[1.8fr_1.5fr_1fr_1fr_1.2fr_1.2fr_auto] gap-3 px-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
                         <div>Product Description</div>
                         <div>Product Group</div>
-                        <div>Quantity (m)</div>
+                        <div>Quantity (pcs)</div>
                         <div>Rate (₹)</div>
                         <div>Total Amount (₹)</div>
                         <div>Godown</div>
@@ -2539,7 +2539,7 @@ export default function Inventory() {
 
                             {/* Quantity */}
                             <div className="space-y-1.5 lg:space-y-0">
-                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Quantity (meters)</label>
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest lg:hidden">Quantity (pieces)</label>
                               <input 
                                 required
                                 type="number" 
