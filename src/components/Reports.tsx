@@ -292,9 +292,22 @@ export default function Reports() {
   // Reload data from localstorage
   const loadData = () => {
     try {
-      setInvoices(JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]'));
+      const rawInvs = JSON.parse(localStorage.getItem('inven_generated_invoices') || '[]');
+      const cleanInvs = rawInvs.filter((i: any) => i && i.date !== '24/07/2026' && i.date !== '2026-07-24' && i.invoiceNo !== 'PSV&CO/25-26/01');
+      if (cleanInvs.length !== rawInvs.length) {
+        localStorage.setItem('inven_generated_invoices', JSON.stringify(cleanInvs));
+      }
+      setInvoices(cleanInvs);
+
       setExpenses(JSON.parse(localStorage.getItem('inven_expense_records') || '[]'));
-      setIncomes(JSON.parse(localStorage.getItem('inven_income_records') || '[]'));
+
+      const rawIncomes = JSON.parse(localStorage.getItem('inven_income_records') || '[]');
+      const cleanIncomes = rawIncomes.filter((inc: any) => inc && inc.date !== '24/07/2026' && inc.date !== '2026-07-24' && inc.invoiceNo !== 'PSV&CO/25-26/01');
+      if (cleanIncomes.length !== rawIncomes.length) {
+        localStorage.setItem('inven_income_records', JSON.stringify(cleanIncomes));
+      }
+      setIncomes(cleanIncomes);
+
       setInventory(JSON.parse(localStorage.getItem('inven_inventory') || '[]'));
       setProduction(JSON.parse(localStorage.getItem('inven_production') || '[]'));
       setCustomers(JSON.parse(localStorage.getItem('inven_customers') || '[]'));
@@ -1034,6 +1047,13 @@ export default function Reports() {
     URL.revokeObjectURL(url);
   };
 
+  const handleViewInvoiceBill = (invoiceNo: string) => {
+    if (!invoiceNo) return;
+    localStorage.setItem('inven_target_view_invoice', invoiceNo);
+    window.dispatchEvent(new CustomEvent('inven_navigate_tab', { detail: { view: 'billing', invoiceNo } }));
+    window.dispatchEvent(new CustomEvent('inven_view_invoice', { detail: { invoiceNo } }));
+  };
+
   return (
     <div className={`space-y-8 animate-in fade-in duration-500 max-w-[1500px] mx-auto pb-12 print:bg-white print:p-0 ${isModalOpen ? '' : 'printable-report'}`}>
       
@@ -1347,7 +1367,14 @@ export default function Reports() {
                           return (
                             <tr key={inv.id} className="group hover:bg-slate-50/50 transition-all">
                               <td className="py-3">
-                                <div className="text-xs font-bold text-slate-800">{inv.invoiceNo}</div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewInvoiceBill(inv.invoiceNo)}
+                                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline bg-transparent border-none p-0 cursor-pointer text-left transition-colors"
+                                  title="Click to view bill on Billing page"
+                                >
+                                  {inv.invoiceNo}
+                                </button>
                                 <div className="text-[9px] text-slate-400 font-medium capitalize mt-0.5">{inv.buyer?.name}</div>
                               </td>
                               <td className="py-3 text-xs font-semibold text-slate-500 font-mono">{inv.date}</td>
@@ -2697,7 +2724,16 @@ export default function Reports() {
                                 const pending = Math.max(0, total - paid);
                                 return (
                                   <tr key={inv.id || lIdx} className="hover:bg-slate-50/50">
-                                    <td className="py-2 px-4 font-bold text-indigo-600">#{inv.invoiceNo}</td>
+                                    <td className="py-2 px-4 font-bold text-indigo-600">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleViewInvoiceBill(inv.invoiceNo)}
+                                        className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold bg-transparent border-none p-0 cursor-pointer text-left transition-colors"
+                                        title="Click to view bill"
+                                      >
+                                        #{inv.invoiceNo}
+                                      </button>
+                                    </td>
                                     <td className="py-2 px-4 text-slate-500 font-mono">{inv.date}</td>
                                     <td className="py-2 px-4 text-slate-700 font-semibold">{inv.buyer?.name || 'Standard Customer'}</td>
                                     <td className="py-2 px-4 text-right font-bold text-slate-800">₹{total.toLocaleString('en-IN')}</td>

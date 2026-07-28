@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Receipt, 
   Search, 
@@ -20,6 +20,7 @@ import {
   FileSpreadsheet,
   Layers,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   RefreshCw,
   FileText,
@@ -132,6 +133,447 @@ const parseSafeDate = (dateStr: any): Date => {
   }
   const parsed = new Date(str);
   return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
+interface ModelSearchDropdownProps {
+  value: string;
+  onChange: (value: string) => void;
+  products: any[];
+  getProductStockInfo?: (modelName: string, invoiceId?: string) => any;
+  editingInvoiceId?: string;
+  placeholder?: string;
+}
+
+const ModelSearchDropdown: React.FC<ModelSearchDropdownProps> = ({
+  value,
+  onChange,
+  products,
+  getProductStockInfo,
+  editingInvoiceId,
+  placeholder = "Select model description"
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const [dropdownCoords, setDropdownCoords] = useState<{ top?: number; bottom?: number; left: number; width: number }>({ left: 0, width: 380 });
+
+  const updatePosition = useCallback(() => {
+    if (dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const dropdownHeight = 320;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const showAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+      
+      const width = Math.max(rect.width, 380);
+      const maxLeft = Math.max(12, window.innerWidth - width - 16);
+      const left = Math.min(Math.max(12, rect.left), maxLeft);
+
+      if (showAbove) {
+        setDropdownCoords({
+          bottom: window.innerHeight - rect.top + 6,
+          top: undefined,
+          left,
+          width
+        });
+      } else {
+        setDropdownCoords({
+          top: rect.bottom + 6,
+          bottom: undefined,
+          left,
+          width
+        });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      updatePosition();
+      const handleScroll = () => updatePosition();
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleScroll);
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+      return () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleScroll);
+      };
+    } else {
+      setSearchQuery('');
+    }
+  }, [isOpen, updatePosition]);
+
+  const productOptions = useMemo(() => {
+    return products.map((prod) => {
+      const desc = prod.description || '';
+      const style = prod.code || prod.styleNo || '';
+      const modelName = prod.name || prod.modelName || '';
+      const valueStr = desc 
+        ? (style ? `${desc} - ${style}` : desc)
+        : (style ? `${style} - ${modelName}` : modelName);
+      return {
+        id: prod.id || valueStr,
+        label: valueStr,
+        desc,
+        style,
+        modelName,
+        prod
+      };
+    });
+  }, [products]);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return productOptions;
+    const q = searchQuery.toLowerCase().trim();
+    return productOptions.filter(opt => 
+      opt.label.toLowerCase().includes(q) ||
+      opt.desc.toLowerCase().includes(q) ||
+      opt.style.toLowerCase().includes(q) ||
+      opt.modelName.toLowerCase().includes(q)
+    );
+  }, [productOptions, searchQuery]);
+
+  const handleSelect = (selectedLabel: string) => {
+    onChange(selectedLabel);
+    setIsOpen(false);
+    setSearchQuery('');
+  };
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-slate-50/50 hover:bg-slate-100/60 focus-within:bg-white border-b border-dashed border-slate-300 py-1.5 px-2 rounded cursor-pointer flex items-center justify-between text-sm font-bold text-slate-800 transition-colors select-none"
+      >
+        <span className={value ? "text-slate-800 font-bold truncate" : "text-slate-400 font-medium truncate"}>
+          {value || placeholder}
+        </span>
+        <div className="flex items-center gap-1 shrink-0 ml-1">
+          {value && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setSearchQuery('');
+              }}
+              className="p-0.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/50"
+              title="Clear selection"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform duration-200", isOpen && "rotate-180")} />
+        </div>
+      </div>
+
+      {isOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: dropdownCoords.top !== undefined ? `${dropdownCoords.top}px` : undefined,
+            bottom: dropdownCoords.bottom !== undefined ? `${dropdownCoords.bottom}px` : undefined,
+            left: `${dropdownCoords.left}px`,
+            width: `${dropdownCoords.width}px`,
+            zIndex: 99999
+          }}
+          className="bg-white border border-slate-200 shadow-2xl rounded-2xl p-2.5 overflow-hidden animate-in fade-in duration-150"
+        >
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Type to search model description..."
+              className="w-full pl-8 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-semibold text-slate-800"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-60 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((opt) => {
+                const isSelected = value === opt.label;
+                const stock = getProductStockInfo ? getProductStockInfo(opt.label, editingInvoiceId) : null;
+                const stockQty = stock ? stock.totalQty : null;
+
+                return (
+                  <div
+                    key={opt.id}
+                    onClick={() => handleSelect(opt.label)}
+                    className={cn(
+                      "px-3 py-2 rounded-xl cursor-pointer text-xs transition-colors flex items-center justify-between gap-2 group",
+                      isSelected 
+                        ? "bg-indigo-50 text-indigo-900 font-bold" 
+                        : "hover:bg-slate-100 text-slate-700 font-semibold"
+                    )}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-slate-800 font-bold group-hover:text-indigo-600 transition-colors">
+                        {opt.label}
+                      </div>
+                      {opt.desc && opt.style && (
+                        <div className="text-[10px] text-slate-400 font-medium truncate">
+                          Style: {opt.style}
+                        </div>
+                      )}
+                    </div>
+
+                    {stockQty !== null && (
+                      <span className={cn(
+                        "text-[10px] font-extrabold px-2 py-0.5 rounded-md whitespace-nowrap border shrink-0",
+                        stockQty > 0 
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200/60" 
+                          : "bg-slate-50 text-slate-400 border-slate-200/60"
+                      )}>
+                        {stockQty} pcs
+                      </span>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-3 px-3 text-center">
+                <p className="text-xs text-slate-400 font-semibold mb-2">No matching models found</p>
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(searchQuery.trim())}
+                    className="w-full text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 py-1.5 px-3 rounded-lg transition-colors truncate"
+                  >
+                    Use custom: "{searchQuery.trim()}"
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface StyleSearchDropdownProps {
+  value: string;
+  onChange: (value: string) => void;
+  styles: any[];
+  placeholder?: string;
+}
+
+const StyleSearchDropdown: React.FC<StyleSearchDropdownProps> = ({
+  value,
+  onChange,
+  styles,
+  placeholder = "Select Style"
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const [dropdownCoords, setDropdownCoords] = useState<{ top?: number; bottom?: number; left: number; width: number }>({ left: 0, width: 220 });
+
+  const updatePosition = useCallback(() => {
+    if (dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const dropdownHeight = 280;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const showAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+      
+      const width = Math.max(rect.width, 240);
+      const maxLeft = Math.max(12, window.innerWidth - width - 16);
+      const left = Math.min(Math.max(12, rect.left), maxLeft);
+
+      if (showAbove) {
+        setDropdownCoords({
+          bottom: window.innerHeight - rect.top + 6,
+          top: undefined,
+          left,
+          width
+        });
+      } else {
+        setDropdownCoords({
+          top: rect.bottom + 6,
+          bottom: undefined,
+          left,
+          width
+        });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      updatePosition();
+      const handleScroll = () => updatePosition();
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleScroll);
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+      return () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleScroll);
+      };
+    } else {
+      setSearchQuery('');
+    }
+  }, [isOpen, updatePosition]);
+
+  const styleOptions = useMemo(() => {
+    return styles.map((st, idx) => {
+      const name = typeof st === 'string' ? st : (st.name || st.styleName || st.code || '');
+      return {
+        id: st.id || idx || name,
+        name
+      };
+    }).filter(opt => opt.name);
+  }, [styles]);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return styleOptions;
+    const q = searchQuery.toLowerCase().trim();
+    return styleOptions.filter(opt => opt.name.toLowerCase().includes(q));
+  }, [styleOptions, searchQuery]);
+
+  const handleSelect = (selectedName: string) => {
+    onChange(selectedName);
+    setIsOpen(false);
+    setSearchQuery('');
+  };
+
+  return (
+    <div className="relative w-full" ref={dropdownRef}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-slate-50/50 hover:bg-slate-100/60 focus-within:bg-white border-b border-dashed border-slate-300 py-1.5 px-2 rounded cursor-pointer flex items-center justify-between text-xs font-bold text-slate-700 transition-colors select-none min-w-[90px]"
+      >
+        <span className={value ? "text-slate-800 font-bold truncate" : "text-slate-400 font-medium truncate"}>
+          {value || placeholder}
+        </span>
+        <div className="flex items-center gap-0.5 shrink-0 ml-1">
+          {value && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setSearchQuery('');
+              }}
+              className="p-0.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/50"
+              title="Clear style"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+          <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform duration-200", isOpen && "rotate-180")} />
+        </div>
+      </div>
+
+      {isOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: dropdownCoords.top !== undefined ? `${dropdownCoords.top}px` : undefined,
+            bottom: dropdownCoords.bottom !== undefined ? `${dropdownCoords.bottom}px` : undefined,
+            left: `${dropdownCoords.left}px`,
+            width: `${dropdownCoords.width}px`,
+            zIndex: 99999
+          }}
+          className="bg-white border border-slate-200 shadow-2xl rounded-2xl p-2.5 overflow-hidden animate-in fade-in duration-150"
+        >
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Type to search style..."
+              className="w-full pl-8 pr-8 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 font-semibold text-slate-800"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-52 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((opt) => {
+                const isSelected = value === opt.name;
+                return (
+                  <div
+                    key={opt.id}
+                    onClick={() => handleSelect(opt.name)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl cursor-pointer text-xs transition-colors flex items-center justify-between gap-2 group",
+                      isSelected 
+                        ? "bg-indigo-50 text-indigo-900 font-bold" 
+                        : "hover:bg-slate-100 text-slate-700 font-semibold"
+                    )}
+                  >
+                    <div className="truncate text-slate-800 font-bold group-hover:text-indigo-600 transition-colors">
+                      {opt.name}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-2 px-2 text-center">
+                <p className="text-xs text-slate-400 font-semibold mb-1.5">No matching style found</p>
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(searchQuery.trim())}
+                    className="w-full text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 py-1.5 px-2.5 rounded-lg transition-colors truncate"
+                  >
+                    Use custom: "{searchQuery.trim()}"
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default function Billing() {
@@ -326,6 +768,46 @@ export default function Billing() {
     window.addEventListener('inven_localstorage_sync', handleSync);
     return () => window.removeEventListener('inven_localstorage_sync', handleSync);
   }, [editingInvoiceId]);
+
+  const handleCheckTargetInvoice = useCallback(() => {
+    const targetNo = localStorage.getItem('inven_target_view_invoice');
+    if (targetNo) {
+      const cleanTarget = targetNo.trim().toLowerCase();
+      let currentInvs = invoices;
+      if (!currentInvs || currentInvs.length === 0) {
+        try {
+          currentInvs = JSON.parse(localStorage.getItem('inven_invoices') || '[]');
+        } catch (e) {
+          currentInvs = [];
+        }
+      }
+      const found = currentInvs.find((i: any) => 
+        (i.invoiceNo && i.invoiceNo.toLowerCase().trim() === cleanTarget) ||
+        (i.id && i.id.toLowerCase().trim() === cleanTarget)
+      );
+      setActiveTab('view_bills');
+      if (found) {
+        setSearchQuery(found.invoiceNo || targetNo);
+        setPreviewInvoice(found);
+      } else {
+        setSearchQuery(targetNo);
+      }
+      localStorage.removeItem('inven_target_view_invoice');
+    }
+  }, [invoices]);
+
+  useEffect(() => {
+    handleCheckTargetInvoice();
+    const handleEvent = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail?.invoiceNo) {
+        localStorage.setItem('inven_target_view_invoice', customEvt.detail.invoiceNo);
+      }
+      handleCheckTargetInvoice();
+    };
+    window.addEventListener('inven_view_invoice', handleEvent);
+    return () => window.removeEventListener('inven_view_invoice', handleEvent);
+  }, [handleCheckTargetInvoice]);
 
   // Helper trigger sync event across the application
   const triggerSync = () => {
@@ -2147,7 +2629,7 @@ export default function Billing() {
               </button>
             </div>
 
-            <div className="border border-slate-100 rounded-2xl overflow-hidden">
+            <div className="border border-slate-100 rounded-2xl overflow-visible bg-white">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
@@ -2170,27 +2652,14 @@ export default function Billing() {
                         {index + 1}
                       </td>
                       <td className="py-2 px-4">
-                        <input 
-                          type="text" 
-                          list="billing-product-options"
+                        <ModelSearchDropdown
                           value={item.modelName}
-                          onChange={(e) => handleSelectModel(index, e.target.value)}
-                          className="w-full bg-slate-50/50 hover:bg-slate-100/40 focus:bg-white border-b border-dashed border-slate-200 outline-none text-sm font-bold text-slate-800 px-2 py-1.5 rounded"
+                          onChange={(val) => handleSelectModel(index, val)}
+                          products={products}
+                          getProductStockInfo={getProductStockInfo}
+                          editingInvoiceId={editingInvoiceId}
                           placeholder="Select model description"
                         />
-                        <datalist id="billing-product-options">
-                          {products.map((prod) => {
-                            const desc = prod.description || '';
-                            const style = prod.code || prod.styleNo || '';
-                            const modelName = prod.name || prod.modelName || '';
-                            const valueStr = desc 
-                              ? (style ? `${desc} - ${style}` : desc)
-                              : (style ? `${style} - ${modelName}` : modelName);
-                            return (
-                              <option key={prod.id} value={valueStr} />
-                            );
-                          })}
-                        </datalist>
                         
                         {item.modelName && (() => {
                           const stock = getProductStockInfo(item.modelName, editingInvoiceId);
@@ -2207,19 +2676,12 @@ export default function Billing() {
                         })()}
                       </td>
                       <td className="py-2 px-4">
-                        <input
-                          type="text"
-                          list={`style-options-${index}`}
+                        <StyleSearchDropdown
                           value={item.style || ''}
-                          onChange={(e) => updateLineItem(index, 'style', e.target.value)}
-                          className="w-full bg-slate-50/50 hover:bg-slate-100/40 focus:bg-white text-xs font-bold text-slate-700 outline-none py-1.5 border-b border-dashed border-slate-200 rounded min-w-[90px] px-2"
+                          onChange={(val) => updateLineItem(index, 'style', val)}
+                          styles={styles}
                           placeholder="Select Style"
                         />
-                        <datalist id={`style-options-${index}`}>
-                          {styles.map((st) => (
-                            <option key={st.id} value={st.name} />
-                          ))}
-                        </datalist>
                       </td>
                       <td className="py-2 px-4">
                         <select

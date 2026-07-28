@@ -73,7 +73,19 @@ export default function Income() {
     // Load recorded incomes
     const savedIncomes = localStorage.getItem('inven_income_records');
     if (savedIncomes) {
-      try { setIncomes(JSON.parse(savedIncomes)); } catch (e) { console.error(e); }
+      try { 
+        let parsedIncomes = JSON.parse(savedIncomes);
+        const cleanIncomes = parsedIncomes.filter((inc: any) => 
+          inc && 
+          inc.date !== '24/07/2026' && 
+          inc.date !== '2026-07-24' && 
+          inc.invoiceNo !== 'PSV&CO/25-26/01'
+        );
+        if (cleanIncomes.length !== parsedIncomes.length) {
+          localStorage.setItem('inven_income_records', JSON.stringify(cleanIncomes));
+        }
+        setIncomes(cleanIncomes); 
+      } catch (e) { console.error(e); }
     } else {
       const demoIncomes: IncomeRecord[] = [
         { 
@@ -100,7 +112,19 @@ export default function Income() {
     // Load invoices
     const savedInvoices = localStorage.getItem('inven_generated_invoices');
     if (savedInvoices) {
-      try { setInvoices(JSON.parse(savedInvoices)); } catch (e) { console.error(e); }
+      try { 
+        let parsedInvs = JSON.parse(savedInvoices);
+        const cleanInvs = parsedInvs.filter((i: any) => 
+          i && 
+          i.date !== '24/07/2026' && 
+          i.date !== '2026-07-24' && 
+          i.invoiceNo !== 'PSV&CO/25-26/01'
+        );
+        if (cleanInvs.length !== parsedInvs.length) {
+          localStorage.setItem('inven_generated_invoices', JSON.stringify(cleanInvs));
+        }
+        setInvoices(cleanInvs); 
+      } catch (e) { console.error(e); }
     }
   };
 
@@ -383,8 +407,51 @@ export default function Income() {
     )
   );
 
+  // Construct opening balance rows for customers
+  const openingBalanceRows: any[] = [];
+  customers.forEach(c => {
+    if (!c || !c.name) return;
+    const currentOB = Number(c.openingBalance) || 0;
+    const obPaidSum = incomes
+      .filter(inc => inc && (inc.customerId === c.id || (inc.customerName && c.name && inc.customerName.trim().toLowerCase() === c.name.trim().toLowerCase())) && inc.allocationType === 'opening_balance')
+      .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+    
+    const initialOB = currentOB + obPaidSum;
+    if (initialOB > 0) {
+      const matchesSearch = !searchQuery || 
+        (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+        'opening balance'.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      if (matchesSearch) {
+        openingBalanceRows.push({
+          id: `OB-${c.id}`,
+          isOpeningBalance: true,
+          date: c.createdAt ? c.createdAt.split('T')[0] : '2026-07-01',
+          customerName: c.name,
+          customerId: c.id,
+          debitAmount: initialOB,
+          notes: 'Opening Balance'
+        });
+      }
+    }
+  });
+
+  const displayRecords = [...openingBalanceRows, ...filteredIncomes].sort((a, b) => {
+    if (a.date !== b.date) return (a.date || '').localeCompare(b.date || '');
+    if (a.isOpeningBalance) return -1;
+    if (b.isOpeningBalance) return 1;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+
   const selectedCategory = categories.find(c => c && c.id === formData.categoryId);
   const isCustomerPayment = selectedCategory?.name === 'Product Sales' || selectedCategory?.name === 'Customer Payment';
+
+  const handleViewInvoiceBill = (invoiceNo: string) => {
+    if (!invoiceNo) return;
+    localStorage.setItem('inven_target_view_invoice', invoiceNo);
+    window.dispatchEvent(new CustomEvent('inven_navigate_tab', { detail: { view: 'billing', invoiceNo } }));
+    window.dispatchEvent(new CustomEvent('inven_view_invoice', { detail: { invoiceNo } }));
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -415,88 +482,189 @@ export default function Income() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredIncomes.map((income) => (
-          <div key={income.id} className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4">
-               <div className="flex items-center gap-1">
-                  <button 
-                    onClick={() => { setEditingId(income.id); setFormData(income); setIsFormOpen(true); }}
-                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => setDeleteConfirmId(income.id)} 
-                    className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-               </div>
-            </div>
+      {/* Table List View */}
+      <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-100 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                <th className="py-4 px-5">Date</th>
+                <th className="py-4 px-5">Bill No.</th>
+                <th className="py-4 px-5">Customer Name</th>
+                <th className="py-4 px-5">Payment Mode</th>
+                <th className="py-4 px-5">Payment ID</th>
+                <th className="py-4 px-5 text-right">Credit (₹)</th>
+                <th className="py-4 px-5 text-right">Debit (₹)</th>
+                <th className="py-4 px-5 text-right">Balance (₹)</th>
+                <th className="py-4 px-5 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs text-slate-700 font-medium">
+              {displayRecords.map((item) => {
+                const selCust = customers.find(c => (item.customerId && c.id === item.customerId) || (c.name && item.customerName && c.name.trim().toLowerCase() === item.customerName.trim().toLowerCase()));
+                const selCustName = (item.customerName || selCust?.name || '').trim().toLowerCase();
+                
+                const custInvoicesList = invoices.filter(inv => {
+                  if (!inv) return false;
+                  const bName = String(inv.buyerName || inv.buyer?.name || '').trim().toLowerCase();
+                  return selCustName !== '' && (bName.includes(selCustName) || selCustName.includes(bName));
+                });
 
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
-                <TrendingUp className="w-6 h-6" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{income.id}</p>
-                <h4 className="text-lg font-bold text-slate-800 truncate">{income.categoryName}</h4>
-                {income.customerName && (
-                  <div className="mt-1 flex flex-col gap-1 items-start">
-                    <p className="text-xs text-indigo-600 font-bold bg-indigo-50/50 rounded-lg px-2 py-0.5 inline-block">
-                      Client: {income.customerName}
-                    </p>
-                    {income.allocationType === 'opening_balance' ? (
-                      <span className="text-[9px] text-amber-600 font-bold bg-amber-50 rounded px-2 py-0.5 inline-block">
-                        Deducted from Opening Balance
-                      </span>
-                    ) : income.allocationType === 'invoice' && income.invoiceNo ? (
-                      <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 rounded px-2 py-0.5 inline-block">
-                        Paid Against Bill: #{income.invoiceNo}
-                      </span>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            </div>
+                // Calculate Customer Balance
+                const currentOB = selCust ? Math.max(0, Number(selCust.openingBalance) || 0) : 0;
+                const obPaidSum = incomes
+                  .filter(inc => inc && (inc.customerId === selCust?.id || (inc.customerName && selCust?.name && inc.customerName.trim().toLowerCase() === selCust.name.trim().toLowerCase())) && inc.allocationType === 'opening_balance')
+                  .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+                const initialOB = currentOB + obPaidSum;
 
-            <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Amount</span>
-                <span className="text-xl font-bold text-emerald-600">₹{income.amount}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-slate-500">
-                  <Calendar className="w-3 h-3" />
-                  <span>{income.date}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Wallet className="w-3 h-3 text-slate-400" />
-                  <span className="bg-white border border-slate-100 px-2 py-0.5 rounded text-[10px] font-bold text-emerald-600 uppercase">
-                    {income.paymentMode}
-                  </span>
-                </div>
-              </div>
-              {income.notes && (
-                <p className="text-[11px] text-slate-500 line-clamp-1 italic pt-1 border-t border-slate-100/50">
-                  {income.notes}
-                </p>
+                const custInvoicesSum = custInvoicesList.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+                const initialBalance = initialOB + custInvoicesSum;
+
+                if (item.isOpeningBalance) {
+                  const runningBalance = initialBalance;
+                  return (
+                    <tr key={item.id} className="hover:bg-amber-50/30 transition-colors group bg-amber-50/10">
+                      <td className="py-3.5 px-5 font-mono text-slate-600 whitespace-nowrap">
+                        {item.date}
+                      </td>
+                      <td className="py-3.5 px-5 whitespace-nowrap">
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-lg font-bold font-mono text-[11px] uppercase tracking-wider">
+                          Opening Balance
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-5 font-bold text-slate-800">
+                        {item.customerName || '-'}
+                      </td>
+                      <td className="py-3.5 px-5 whitespace-nowrap">
+                        <span className="text-slate-400 font-mono">-</span>
+                      </td>
+                      <td className="py-3.5 px-5 font-mono text-amber-600 font-bold whitespace-nowrap">
+                        OB
+                      </td>
+                      <td className="py-3.5 px-5 text-right text-slate-400 whitespace-nowrap font-mono">
+                        ₹0.00
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-bold text-rose-600 whitespace-nowrap font-mono">
+                        ₹{(item.debitAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-extrabold text-slate-800 whitespace-nowrap font-mono">
+                        ₹{runningBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3.5 px-5 text-center whitespace-nowrap">
+                        <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                          Master OB
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                const income = item;
+                // Calculate Invoice Number / Bill No
+                let invNo = income.invoiceNo || (income.invoiceId ? invoices.find(i => i.id === income.invoiceId)?.invoiceNo : null);
+                if (!invNo && custInvoicesList.length > 0) {
+                  invNo = custInvoicesList.map(i => i.invoiceNo).filter(Boolean).join(', ');
+                }
+
+                // Payments made up to this receipt
+                const customerPayments = incomes.filter(inc => {
+                  const incCustName = String(inc.customerName || '').trim().toLowerCase();
+                  const matchesCust = (inc.customerId && income.customerId && inc.customerId === income.customerId) ||
+                    (incCustName !== '' && selCustName !== '' && (incCustName.includes(selCustName) || selCustName.includes(incCustName)));
+                  return matchesCust;
+                });
+                
+                // Sum payments prior or equal to this income record
+                const totalPaidUpToThis = customerPayments
+                  .filter(inc => inc.date < income.date || (inc.date === income.date && inc.id <= income.id))
+                  .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+                  
+                const runningBalance = Math.max(0, initialBalance - totalPaidUpToThis);
+
+                return (
+                  <tr key={income.id} className="hover:bg-indigo-50/30 transition-colors group">
+                    <td className="py-3.5 px-5 font-mono text-slate-600 whitespace-nowrap">
+                      {income.date}
+                    </td>
+                    <td className="py-3.5 px-5 whitespace-nowrap">
+                      {invNo ? (
+                        <button
+                          type="button"
+                          onClick={() => handleViewInvoiceBill(invNo.split(',')[0].trim())}
+                          className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-900 border border-emerald-200 px-2.5 py-1 rounded-lg font-bold font-mono text-[11px] cursor-pointer transition-colors text-left"
+                          title="Click to view bill on Billing page"
+                        >
+                          {invNo}
+                        </button>
+                      ) : income.allocationType === 'opening_balance' ? (
+                        <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded text-[10px] font-semibold">
+                          Opening Balance
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-mono">-</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-5 font-bold text-slate-800">
+                      {income.customerName || income.categoryName || '-'}
+                    </td>
+                    <td className="py-3.5 px-5 whitespace-nowrap">
+                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider">
+                        {income.paymentMode || 'Cash'}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-5 font-mono text-indigo-600 font-bold whitespace-nowrap">
+                      {income.id}
+                    </td>
+                    <td className="py-3.5 px-5 text-right font-bold text-emerald-600 whitespace-nowrap font-mono">
+                      ₹{(Number(income.amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3.5 px-5 text-right text-slate-400 whitespace-nowrap font-mono">
+                      ₹0.00
+                    </td>
+                    <td className="py-3.5 px-5 text-right font-extrabold text-slate-800 whitespace-nowrap font-mono">
+                      ₹{runningBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3.5 px-5 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1">
+                        <button 
+                          onClick={() => { 
+                            setEditingId(income.id); 
+                            setFormData(income); 
+                            setIsFormOpen(true); 
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={() => setDeleteConfirmId(income.id)} 
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredIncomes.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                    <CheckCircle2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                    <p className="font-medium text-sm">No income records found matching your selection.</p>
+                  </td>
+                </tr>
               )}
-            </div>
-          </div>
-        ))}
-        {filteredIncomes.length === 0 && (
-          <div className="col-span-full py-20 text-center bg-white rounded-[32px] border border-dashed border-slate-200">
-            <CheckCircle2 className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-            <p className="text-slate-400 font-medium">No income records found.</p>
-          </div>
-        )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {isFormOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+          <div className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="p-8 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-xl font-bold text-slate-800">

@@ -43,6 +43,17 @@ export default function App() {
     return () => window.removeEventListener('inven_localstorage_sync', handleSync);
   }, []);
 
+  useEffect(() => {
+    const handleNavigateTab = (e: Event) => {
+      const customEvt = e as CustomEvent;
+      if (customEvt.detail && customEvt.detail.view) {
+        setCurrentView(customEvt.detail.view);
+      }
+    };
+    window.addEventListener('inven_navigate_tab', handleNavigateTab);
+    return () => window.removeEventListener('inven_navigate_tab', handleNavigateTab);
+  }, []);
+
   // Prevent mouse wheel scrolling from changing values of focused number inputs globally
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
