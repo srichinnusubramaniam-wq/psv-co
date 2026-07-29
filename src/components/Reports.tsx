@@ -43,8 +43,8 @@ const SearchableFilterSelect: React.FC<SearchableDropdownProps> = ({
   value,
   onChange,
   options,
-  placeholder = "All Product Descriptions",
-  allOptionLabel = "All Product Descriptions"
+  placeholder = "Search...",
+  allOptionLabel = "All Options"
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -85,7 +85,7 @@ const SearchableFilterSelect: React.FC<SearchableDropdownProps> = ({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search description..."
+              placeholder={placeholder}
               autoFocus
               className="w-full bg-slate-50 border border-slate-200 rounded-xl py-1.5 pl-8 pr-7 text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-colors"
             />
@@ -1206,16 +1206,13 @@ export default function Reports() {
                   <label className="text-[10px] uppercase font-black text-slate-400 tracking-wider flex items-center gap-1.5 matches-label">
                     <Package className="w-3 h-3 text-slate-400" /> Item / Model Details
                   </label>
-                  <select
+                  <SearchableFilterSelect
                     value={selectedItemModel}
-                    onChange={(e) => setSelectedItemModel(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:outline-none p-2.5 rounded-xl text-xs font-semibold text-slate-700 transition-all cursor-pointer"
-                  >
-                    <option value="All">All Items / Models</option>
-                    {availableItemModels.map(model => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setSelectedItemModel(val)}
+                    options={availableItemModels}
+                    placeholder="Search item / model..."
+                    allOptionLabel="All Items / Models"
+                  />
                 </div>
               </>
             )}

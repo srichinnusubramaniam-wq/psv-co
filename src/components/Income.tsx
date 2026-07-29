@@ -515,7 +515,6 @@ export default function Income() {
                 <th className="py-4 px-5">Bill No.</th>
                 <th className="py-4 px-5">Customer Name</th>
                 <th className="py-4 px-5">Payment Mode</th>
-                <th className="py-4 px-5">Payment ID</th>
                 <th className="py-4 px-5 text-right">Credit (₹)</th>
                 <th className="py-4 px-5 text-right">Debit (₹)</th>
                 <th className="py-4 px-5 text-right">Balance (₹)</th>
@@ -556,9 +555,6 @@ export default function Income() {
                       </td>
                       <td className="py-3.5 px-5 whitespace-nowrap">
                         <span className="text-slate-400 font-mono">-</span>
-                      </td>
-                      <td className="py-3.5 px-5 font-mono text-amber-600 font-bold whitespace-nowrap">
-                        OB
                       </td>
                       <td className="py-3.5 px-5 text-right text-slate-400 whitespace-nowrap font-mono">
                         ₹0.00
@@ -636,9 +632,6 @@ export default function Income() {
                         )}
                       </span>
                     </td>
-                    <td className="py-3.5 px-5 font-mono text-indigo-600 font-bold whitespace-nowrap">
-                      {income.id}
-                    </td>
                     <td className="py-3.5 px-5 text-right font-bold text-emerald-600 whitespace-nowrap font-mono">
                       ₹{(Number(income.amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
@@ -675,7 +668,7 @@ export default function Income() {
               })}
               {filteredIncomes.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400">
+                  <td colSpan={8} className="py-16 text-center text-slate-400">
                     <CheckCircle2 className="w-10 h-10 text-slate-200 mx-auto mb-3" />
                     <p className="font-medium text-sm">No income records found matching your selection.</p>
                   </td>
