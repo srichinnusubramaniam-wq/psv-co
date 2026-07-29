@@ -29,6 +29,7 @@ import {
   Check
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
+import { getCustomerInitialOB } from './CustomerReceipts';
 
 interface SearchableDropdownProps {
   value: string;
@@ -2700,49 +2701,102 @@ export default function Reports() {
                         <FileText className="w-3.5 h-3.5 text-slate-400" />
                         Invoices Billing Records
                       </h4>
-                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[180px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
+                      <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[220px] overflow-y-auto custom-scrollbar print:max-h-none print:overflow-visible">
                         <table className="w-full text-xs">
                           <thead className="bg-slate-50 sticky top-0 border-b border-slate-100 z-10">
                             <tr>
-                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Invoice No</th>
+                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Invoice/Bill No</th>
                               <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Date</th>
-                              <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Customer</th>
-                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Net Amount</th>
-                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Paid</th>
-                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Pending</th>
+                              {selectedCustomer === 'All' && (
+                                <th className="py-2 px-4 text-left font-bold text-slate-500 uppercase tracking-wider text-[10px]">Customer</th>
+                              )}
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Credit</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Debit</th>
+                              <th className="py-2 px-4 text-right font-bold text-slate-500 uppercase tracking-wider text-[10px]">Balance</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50">
-                            {stmtInvoices.length === 0 ? (
-                              <tr>
-                                <td colSpan={6} className="text-center py-6 text-slate-400 text-[11px] font-semibold">No invoices matched this selection</td>
-                              </tr>
-                            ) : (
-                              stmtInvoices.map((inv, lIdx) => {
+                            {(() => {
+                              const stmtOBRows: any[] = [];
+                              const matchedCustomers = customers.filter(c => {
+                                if (!c || !c.name) return false;
+                                if (selectedCustomer !== 'All' && c.name.trim().toUpperCase() !== selectedCustomer.trim().toUpperCase()) return false;
+                                return true;
+                              });
+
+                              matchedCustomers.forEach(c => {
+                                const initialOB = getCustomerInitialOB(c, invoices, incomes);
+                                const totalOBPaid = Math.max(0, initialOB - (Number(c.openingBalance) || 0));
+                                const remainingOB = Math.max(0, Number(c.openingBalance) || 0);
+
+                                if (initialOB > 0) {
+                                  stmtOBRows.push({
+                                    id: `OB-${c.id}`,
+                                    isOB: true,
+                                    invoiceNo: 'OPENING BALANCE',
+                                    date: startDate || (c.createdAt ? c.createdAt.split('T')[0] : '2026-07-01'),
+                                    customer: c.name,
+                                    debit: initialOB,
+                                    credit: totalOBPaid,
+                                    balance: remainingOB
+                                  });
+                                }
+                              });
+
+                              const stmtInvoicesCombined = stmtInvoices.map(inv => {
                                 const total = Number(inv.totalAmount) || 0;
                                 const paid = Number(inv.paidAmount) || 0;
                                 const pending = Math.max(0, total - paid);
+                                return {
+                                  id: inv.id,
+                                  isOB: false,
+                                  invoiceNo: inv.invoiceNo,
+                                  date: inv.date,
+                                  customer: inv.buyer?.name || 'Standard Customer',
+                                  debit: total,
+                                  credit: paid,
+                                  balance: pending
+                                };
+                              });
+
+                              const billingRecords = [...stmtOBRows, ...stmtInvoicesCombined];
+
+                              if (billingRecords.length === 0) {
                                 return (
-                                  <tr key={inv.id || lIdx} className="hover:bg-slate-50/50">
-                                    <td className="py-2 px-4 font-bold text-indigo-600">
+                                  <tr>
+                                    <td colSpan={selectedCustomer === 'All' ? 6 : 5} className="text-center py-6 text-slate-400 text-[11px] font-semibold">No records matched this selection</td>
+                                  </tr>
+                                );
+                              }
+
+                              return billingRecords.map((rec, lIdx) => (
+                                <tr key={rec.id || lIdx} className={`hover:bg-slate-50/50 ${rec.isOB ? 'bg-amber-50/20' : ''}`}>
+                                  <td className="py-2 px-4 font-bold text-indigo-600">
+                                    {rec.isOB ? (
+                                      <span className="bg-amber-100/80 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider">
+                                        OPENING BALANCE
+                                      </span>
+                                    ) : (
                                       <button
                                         type="button"
-                                        onClick={() => handleViewInvoiceBill(inv.invoiceNo)}
+                                        onClick={() => handleViewInvoiceBill(rec.invoiceNo)}
                                         className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold bg-transparent border-none p-0 cursor-pointer text-left transition-colors"
                                         title="Click to view bill"
                                       >
-                                        #{inv.invoiceNo}
+                                        #{rec.invoiceNo}
                                       </button>
-                                    </td>
-                                    <td className="py-2 px-4 text-slate-500 font-mono">{inv.date}</td>
-                                    <td className="py-2 px-4 text-slate-700 font-semibold">{inv.buyer?.name || 'Standard Customer'}</td>
-                                    <td className="py-2 px-4 text-right font-bold text-slate-800">₹{total.toLocaleString('en-IN')}</td>
-                                    <td className="py-2 px-4 text-right font-semibold text-emerald-600">₹{paid.toLocaleString('en-IN')}</td>
-                                    <td className="py-2 px-4 text-right font-bold text-rose-500">₹{pending.toLocaleString('en-IN')}</td>
-                                  </tr>
-                                );
-                              })
-                            )}
+                                    )}
+                                  </td>
+                                  <td className="py-2 px-4 text-slate-500 font-mono">{rec.date}</td>
+                                  {selectedCustomer === 'All' && (
+                                    <td className="py-2 px-4 text-slate-700 font-semibold">{rec.customer}</td>
+                                  )}
+                                  <td className="py-2 px-4 text-right font-semibold text-emerald-600">₹{rec.credit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                  <td className="py-2 px-4 text-right font-bold text-slate-800">₹{rec.debit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                  <td className="py-2 px-4 text-right font-bold text-rose-500">₹{rec.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                                </tr>
+                              ));
+                            })()}
                           </tbody>
                         </table>
                       </div>

@@ -30,6 +30,7 @@ export interface Customer {
   gstNumber?: string;
   tcsApplicable?: 'YES' | 'NO';
   openingBalance?: number;
+  initialOpeningBalance?: number;
   createdAt: string;
 }
 
@@ -93,11 +94,13 @@ export default function Customers() {
       return;
     }
     
+    const currentEditingCust = editingId ? customers.find(c => c.id === editingId) : null;
     const updatedData = {
       ...formData,
       mobileNumber: mobVal,
       phone: formData.phone || '', // phone is optional now
-      tcsApplicable: formData.tcsApplicable || 'NO'
+      tcsApplicable: formData.tcsApplicable || 'NO',
+      initialOpeningBalance: currentEditingCust?.initialOpeningBalance ?? (formData.openingBalance !== undefined ? Number(formData.openingBalance) || 0 : undefined)
     };
 
     if (editingId) {

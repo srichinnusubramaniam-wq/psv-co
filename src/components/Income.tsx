@@ -34,6 +34,34 @@ export interface IncomeCategory {
   name: string;
 }
 
+const getCustomerInitialOB = (cust: any, custInvoices: any[], custIncomes: any[]) => {
+  if (!cust) return 0;
+  if (cust.initialOpeningBalance !== undefined && cust.initialOpeningBalance !== null) {
+    return Number(cust.initialOpeningBalance) || 0;
+  }
+  const currentOB = Math.max(0, Number(cust.openingBalance) || 0);
+  const cName = String(cust.name || '').trim().toLowerCase();
+  
+  const cInvs = (custInvoices || []).filter(inv => {
+    if (!inv) return false;
+    const bName = String(inv.buyerName || inv.buyer?.name || '').trim().toLowerCase();
+    return cName !== '' && (bName.includes(cName) || cName.includes(bName));
+  });
+
+  const cIncs = (custIncomes || []).filter(inc => {
+    if (!inc) return false;
+    const incCustName = String(inc.customerName || '').trim().toLowerCase();
+    return (inc.customerId && cust.id && inc.customerId === cust.id) ||
+      (incCustName !== '' && cName !== '' && (incCustName.includes(cName) || cName.includes(incCustName)));
+  });
+
+  const totalInvoicePaid = cInvs.reduce((sum, inv) => sum + (Number(inv.paidAmount) || 0), 0);
+  const totalIncomeAmount = cIncs.reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
+  const totalOBPaid = Math.max(0, totalIncomeAmount - totalInvoicePaid);
+  
+  return currentOB + totalOBPaid;
+};
+
 export default function Income() {
   const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
   const [categories, setCategories] = useState<IncomeCategory[]>([]);
@@ -411,12 +439,7 @@ export default function Income() {
   const openingBalanceRows: any[] = [];
   customers.forEach(c => {
     if (!c || !c.name) return;
-    const currentOB = Number(c.openingBalance) || 0;
-    const obPaidSum = incomes
-      .filter(inc => inc && (inc.customerId === c.id || (inc.customerName && c.name && inc.customerName.trim().toLowerCase() === c.name.trim().toLowerCase())) && inc.allocationType === 'opening_balance')
-      .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
-    
-    const initialOB = currentOB + obPaidSum;
+    const initialOB = getCustomerInitialOB(c, invoices, incomes);
     if (initialOB > 0) {
       const matchesSearch = !searchQuery || 
         (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -511,11 +534,7 @@ export default function Income() {
                 });
 
                 // Calculate Customer Balance
-                const currentOB = selCust ? Math.max(0, Number(selCust.openingBalance) || 0) : 0;
-                const obPaidSum = incomes
-                  .filter(inc => inc && (inc.customerId === selCust?.id || (inc.customerName && selCust?.name && inc.customerName.trim().toLowerCase() === selCust.name.trim().toLowerCase())) && inc.allocationType === 'opening_balance')
-                  .reduce((sum, inc) => sum + (Number(inc.amount) || 0), 0);
-                const initialOB = currentOB + obPaidSum;
+                const initialOB = getCustomerInitialOB(selCust, invoices, incomes);
 
                 const custInvoicesSum = custInvoicesList.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
                 const initialBalance = initialOB + custInvoicesSum;
@@ -608,8 +627,13 @@ export default function Income() {
                       {income.customerName || income.categoryName || '-'}
                     </td>
                     <td className="py-3.5 px-5 whitespace-nowrap">
-                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider">
-                        {income.paymentMode || 'Cash'}
+                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider inline-flex items-center gap-1.5">
+                        <span>{income.paymentMode || 'Cash'}</span>
+                        {income.notes && (
+                          <span className="text-slate-500 font-medium normal-case tracking-normal">
+                            ({income.notes})
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="py-3.5 px-5 font-mono text-indigo-600 font-bold whitespace-nowrap">
@@ -844,13 +868,13 @@ export default function Income() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Notes</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest px-1">Notes / Cheque No / Ref ID</label>
                 <textarea 
                   className="w-full bg-[#f8faff] border-none rounded-2xl py-4 px-6 text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 font-medium text-slate-700 shadow-sm resize-none"
                   rows={2}
                   value={formData.notes || ''}
                   onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                  placeholder="Additional details..."
+                  placeholder="Cheque No., UTR / Transaction Ref, or details..."
                 />
               </div>
 
