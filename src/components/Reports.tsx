@@ -2006,13 +2006,8 @@ export default function Reports() {
                               </td>
                               <td className="py-4 text-right">
                                 <div className="text-xs font-bold text-slate-700">
-                                  {item.unit || 'Unknown'}
+                                  {item.toGodown || item.unit || 'Unknown'}
                                 </div>
-                                {item.toGodown && (
-                                  <div className="text-[10px] text-indigo-600 font-bold">
-                                    → To: {item.toGodown}
-                                  </div>
-                                )}
                               </td>
                               <td className="py-4 text-right no-print">
                                 <button
